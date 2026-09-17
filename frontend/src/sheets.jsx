@@ -3,7 +3,7 @@ import { useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
 import { EXDB, EXIDX, BODYPARTS, isCardio, isBodyweightEq, allExercises, equipmentOf } from './lib/exercises.js'
 import { fmtDate, fmtNum, fmtVol, fmtDur, durPart, todayISO, uid, exCount, DAYN, MONTHS_LONG, ACCENTS } from './lib/format.js'
-import { lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolume, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf, isBw, isPerSide, sideReps } from './lib/history.js'
+import { lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolume, setsDone, setsDoneActive, lastBW, weighDue, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf, isBw, isPerSide, sideReps } from './lib/history.js'
 import { beep, vibrate } from './lib/sound.js'
 import { t, instrFor, getLang, INSTR_LANGS } from './lib/i18n.js'
 import { nav } from './lib/nav.js'
@@ -20,6 +20,7 @@ import { buildPlanBundle, parsePlan, mergePlan, printPlan } from './lib/plan-sha
 import { estimate1RM, best1RM, is1RMRecord, REP_CAP } from './lib/onerm.js'
 import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLICIES_FOR, POLICY_NAME, POLICY_DESC, MAX_BW_SETS } from './lib/progression.js'
 import { MOBILE, shareExport } from './lib/mobile.js'
+import { esAliasTerms } from './lib/search-es.js'
 
 const S = () => useStore.getState().S
 const update = (...a) => useStore.getState().update(...a)
@@ -416,10 +417,14 @@ function ExercisePicker({ onPick, close }) {
   const [eq, setEq] = useState('')          // '' = any equipment
   const [shown, setShown] = useState(50)
   const ql = q.toLowerCase().trim()
+  // Spanish search: "sentadilla" also matches the English "squat" in name/target/equipment.
+  const esTerms = esAliasTerms(ql)
+  const matchQ = e => e.n.toLowerCase().includes(ql) || e.tg.includes(ql) || e.eq.includes(ql) || (e.desc || '').toLowerCase().includes(ql)
+  const matchEs = e => esTerms.some(term => e.n.toLowerCase().includes(term) || e.tg.includes(term) || e.eq.includes(term))
   const all = allExercises(st)
   let base = all.filter(e =>
     (bp === '★' ? usage[e.id] : (!bp || e.bp === bp)) &&
-    (!ql || e.n.toLowerCase().includes(ql) || e.tg.includes(ql) || e.eq.includes(ql) || (e.desc || '').toLowerCase().includes(ql)))
+    (!ql || matchQ(e) || matchEs(e)))
   if (bp === '★') base = [...base].sort((a, b) => (usage[b.id] - usage[a.id]) || (a.n < b.n ? -1 : 1))
   const eqOpts = equipmentOf(base)
   // Drop the equipment filter if the search narrowed it away, so you never hit a dead end.
@@ -819,11 +824,240 @@ export function WorkoutRow({ w, onClick }) {
   </div>
 }
 
-/* ============================ workout lifecycle ============================ */
-export function startFlow(routineId) {
-  bwSheet({ required: true, onDone: bw => beginWorkout(routineId, bw) })
+/* ============================ personal records manager ============================ */
+function EditPRSheet({ exId, close }) {
+  const st = useStore(s => s.S)
+  const ex = EXIDX[exId] || {}
+  const cur = st.personalRecords[exId] || { w: 0, r: 1 }
+  const [w, setW] = useState(cur.w || 0)
+  const [r, setR] = useState(cur.r || 1)
+  const save = () => {
+    update(s => { s.personalRecords[exId] = { w: parseFloat(w) || 0, r: parseInt(r) || 1, d: todayISO() } })
+    close(); toast(t('Weight saved'))
+  }
+  return <>
+    <h3 className="capitalize">{ex.n || exId}</h3>
+    <div className="muted small" style={{ marginBottom: 16 }}>{t('Personal Record')}</div>
+    <div className="row" style={{ gap: 12, marginBottom: 16 }}>
+      <div style={{ flex: 1 }}>
+        <div className="small muted" style={{ marginBottom: 4 }}>{t('Weight ({0})', st.unit)}</div>
+        <div className="stp w" style={{ width: '100%' }}>
+          <button onClick={() => setW(v => Math.max(0, Math.round(((parseFloat(v) || 0) - 2.5) * 100) / 100))}><Icon name="minus" /></button>
+          <span className="val"><input type="number" value={w} onChange={e => setW(e.target.value)} style={{ width: 60, textAlign: 'center', background: 'transparent', border: 'none', color: 'inherit', fontSize: 'inherit' }} /></span>
+          <button onClick={() => setW(v => Math.round(((parseFloat(v) || 0) + 2.5) * 100) / 100)}><Icon name="plus" /></button>
+        </div>
+      </div>
+      <div style={{ flex: 1 }}>
+        <div className="small muted" style={{ marginBottom: 4 }}>{t('Reps')}</div>
+        <div className="stp r" style={{ width: '100%' }}>
+          <button onClick={() => setR(v => Math.max(1, (parseInt(v) || 1) - 1))}><Icon name="minus" /></button>
+          <span className="val"><input type="number" value={r} onChange={e => setR(e.target.value)} style={{ width: 48, textAlign: 'center', background: 'transparent', border: 'none', color: 'inherit', fontSize: 'inherit' }} /></span>
+          <button onClick={() => setR(v => (parseInt(v) || 1) + 1)}><Icon name="plus" /></button>
+        </div>
+      </div>
+    </div>
+    <Button variant="primary" onClick={save}>{t('Save')}</Button>
+    <div style={{ height: 8 }} />
+    <Button onClick={() => { update(s => { delete s.personalRecords[exId] }); close() }}>{t('Delete')}</Button>
+  </>
 }
-export function beginWorkout(routineId, bw) {
+function PRManagerSheet({ close }) {
+  const st = useStore(s => s.S)
+  return <>
+    <h3>{t('Your records')}</h3>
+    <div className="list">
+      {st.trackedPRExercises.map(id => {
+        const ex = EXIDX[id] || {}
+        const pr = st.personalRecords[id]
+        return <div key={id} className="item" onClick={() => ui().openSheet(c => <EditPRSheet exId={id} close={c} />)}>
+          <div className="grow">
+            <div className="tt capitalize">{ex.n || id}</div>
+            <div className="ss">{pr ? `${fmtNum(pr.w)} ${st.unit} × ${pr.r}${pr.d ? ' · ' + fmtDate(pr.d, true) : ''}` : t('No PR logged yet')}</div>
+          </div>
+          <div className="row" style={{ gap: 8 }}>
+            {pr && <span className="tag" style={{ color: '#f59e0b' }}>★ PR</span>}
+            <button className="iconbtn" style={{ color: 'var(--red)', fontSize: 15 }} onClick={e => { e.stopPropagation(); update(s => { s.trackedPRExercises = s.trackedPRExercises.filter(x => x !== id) }) }}><Icon name="xmark" /></button>
+          </div>
+        </div>
+      })}
+    </div>
+    <div style={{ height: 12 }} />
+    <Button icon="plus" onClick={() => exercisePicker(ex => {
+      if (!st.trackedPRExercises.includes(ex.id)) update(s => { s.trackedPRExercises.push(ex.id) })
+    })}>{t('Pick exercises to track')}</Button>
+    <div style={{ height: 8 }} />
+    <Button onClick={close}>{t('Done')}</Button>
+  </>
+}
+export const prManagerSheet = () => ui().openSheet(close => <PRManagerSheet close={close} />)
+
+/* ============================ workout lifecycle ============================ */
+function StartOptionsSheet({ routineId, close }) {
+  const st = useStore(s => s.S)
+  const todayRoutine = routineId ? st.routines.find(r => r.id === routineId) : null
+  const [pickingOther, setPickingOther] = useState(false)
+  const others = st.routines.filter(r => r.id !== routineId)
+
+  const launch = (rid, warmup = false) => { close(); beginWorkout(rid, null, warmup) }
+
+  if (pickingOther) return <>
+    <h3>{todayRoutine ? t('Pick another routine') : t('Start a routine')}</h3>
+    <div className="list">
+      {others.map(r => <div key={r.id} className="item" onClick={() => launch(r.id)}>
+        <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
+        <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
+        <span className="tag acc">{t('Start')}</span>
+      </div>)}
+    </div>
+  </>
+
+  return <>
+    <h3>{t('Start workout')}</h3>
+    <div className="list">
+      {todayRoutine && <div className="item" onClick={() => launch(routineId)}>
+        <span className="lrow-i" style={{ color: 'var(--acc)' }}><Icon name="play" /></span>
+        <div className="grow"><div className="tt">{t('Start plan routine')}</div><div className="ss">{todayRoutine.name}</div></div>
+      </div>}
+      {todayRoutine && <div className="item" onClick={() => launch(routineId, true)}>
+        <span className="lrow-i" style={{ color: '#f59e0b' }}><Icon name="timer" /></span>
+        <div className="grow"><div className="tt">{t('Start warm-up')}</div><div className="ss">{t('Warm-up')}</div></div>
+      </div>}
+      {others.length > 0 && <div className="item" onClick={() => setPickingOther(true)}>
+        <span className="lrow-i"><Icon name="shuffle" /></span>
+        <div className="grow"><div className="tt">{todayRoutine ? t('Pick another routine') : t('Start a routine')}</div><div className="ss">{exCount(others.length)}</div></div>
+        <Icon name="chevronRight" className="chev" />
+      </div>}
+      <div className="item" onClick={() => launch(null)}>
+        <span className="lrow-i"><Icon name="plus" /></span>
+        <div className="grow"><div className="tt">{t('Add exercises on the fly')}</div><div className="ss">{t('Freestyle workout (pick as you go)')}</div></div>
+      </div>
+      <div className="item" onClick={() => { close(); retroWorkoutFlow() }}>
+        <span className="lrow-i"><Icon name="clock" /></span>
+        <div className="grow"><div className="tt">{t('Log a finished workout')}</div></div>
+      </div>
+    </div>
+  </>
+}
+function RetroWorkoutFlow({ close }) {
+  const st = useStore(s => s.S)
+  const [exCount_, setExCount] = useState(3)
+  const [step, setStep] = useState(0) // 0 = count, 1..N = per-exercise
+  const [exercises, setExercises] = useState([]) // [{id, sets:[{w,r,pr,type,drops}]}]
+
+  const addSet = idx => setExercises(prev => prev.map((e, i) => i === idx
+    ? { ...e, sets: [...e.sets, { w: e.sets[e.sets.length - 1]?.w || 0, r: e.sets[e.sets.length - 1]?.r || 0, done: true }] }
+    : e))
+  const setSetField = (idx, si, field, v) => setExercises(prev => prev.map((e, i) => {
+    if (i !== idx) return e
+    const sets = e.sets.map((s, j) => j === si ? { ...s, [field]: v } : s)
+    return { ...e, sets }
+  }))
+  const tagSet = (idx, si) => setExercises(prev => prev.map((e, i) => {
+    if (i !== idx) return e
+    const sets = e.sets.map((s, j) => {
+      if (j !== si) return s
+      if (!s.type && !s.pr) return { ...s, type: 'drop', drops: [{ w: s.w || 0, r: s.r || 0 }, { w: Math.max(0, (s.w || 0) - 5), r: s.r || 0 }] }
+      if (s.type === 'drop') { const { type: _, drops: __, ...rest } = s; return { ...rest, pr: true } }
+      const { pr: _, ...rest } = s; return rest
+    })
+    return { ...e, sets }
+  }))
+
+  const save = () => {
+    const now = Date.now()
+    const entries = exercises.map(e => ({ id: e.id, sets: e.sets, topW: null, target: { id: e.id, mode: 'reps', sets: e.sets.length, reps: e.sets[0]?.r || 0, weight: e.sets[0]?.w || 0 } }))
+      .filter(e => e.sets.length)
+    const w = { id: uid(), d: todayISO(), start: now, end: now, routineId: null, name: t('Freestyle'), bw: null, entries, prs: [], retroactive: true }
+    w.vol = workoutVolume(w)
+    update(s => {
+      entries.forEach(e => {
+        e.sets.forEach(set => {
+          if (set.pr && set.w > 0) {
+            const cur = s.personalRecords[e.id]
+            if (!cur || set.w > cur.w || (set.w === cur.w && set.r > cur.r)) {
+              s.personalRecords[e.id] = { w: set.w, r: set.r, d: todayISO() }
+            }
+          }
+        })
+        const mx = Math.max(0, ...e.sets.filter(x => x.done).map(x => x.w || 0))
+        if (mx > 0) { const cur = s.exWeights[e.id]; if (!cur || mx > cur.w) s.exWeights[e.id] = { w: mx, d: todayISO() } }
+        if (e.sets.some(x => x.w > 0 && bestWeightFor(s, e.id) < mx)) w.prs.push(e.id)
+      })
+      s.workouts.push(w)
+    })
+    close()
+    toast(t('Workout saved'))
+  }
+
+  if (step === 0) return <>
+    <h3>{t('Log a finished workout')}</h3>
+    <div className="muted small" style={{ marginBottom: 16 }}>{t('How many exercises did you do?')}</div>
+    <div className="row" style={{ justifyContent: 'center', gap: 16, marginBottom: 24 }}>
+      <button className="bw-pm" onClick={() => setExCount(c => Math.max(1, c - 1))}><Icon name="minus" /></button>
+      <span style={{ fontSize: 32, fontWeight: 700, minWidth: 40, textAlign: 'center' }}>{exCount_}</span>
+      <button className="bw-pm" onClick={() => setExCount(c => Math.min(20, c + 1))}><Icon name="plus" /></button>
+    </div>
+    <Button variant="primary" onClick={() => {
+      setExercises(Array.from({ length: exCount_ }, () => ({ id: null, sets: [{ w: 0, r: 10, done: true }] })))
+      setStep(1)
+    }}>{t('Next')}</Button>
+  </>
+
+  const exIdx = step - 1
+  const ex = exercises[exIdx]
+  const exInfo = ex?.id ? (EXIDX[ex.id] || {}) : null
+
+  return <>
+    <h3>{t('Exercise {0} of {1}', step, exCount_)}</h3>
+    {!exInfo ? <Button icon="plus" onClick={() => exercisePicker(picked => setExercises(prev => prev.map((e, i) => i === exIdx ? { ...e, id: picked.id } : e)))}>{t('Pick exercise')}</Button>
+      : <div className="row between" style={{ marginBottom: 12 }}>
+          <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{exInfo.n}</span>
+          <button className="iconbtn" onClick={() => exercisePicker(picked => setExercises(prev => prev.map((e, i) => i === exIdx ? { ...e, id: picked.id } : e)))}><Icon name="shuffle" /></button>
+        </div>}
+    {exInfo && <>
+      <div className="card" style={{ marginBottom: 10 }}>
+        <div className="sethead"><span className="n-sp" /><span className="w-sp">{t('Weight ({0})', st.unit)}</span><span className="r-sp">{t('Reps')}</span><span className="ck-sp" /></div>
+        {ex.sets.map((s, si) => {
+          const isDrop = s.type === 'drop'
+          const tagLabel = isDrop ? 'D' : s.pr ? '★' : '·'
+          const tagStyle = isDrop ? { color: 'var(--acc)', fontWeight: 700 } : s.pr ? { color: '#f59e0b', fontWeight: 700 } : { opacity: 0.3 }
+          return <div key={si}>
+            <div className="setrow">
+              <div className="n">{si + 1}</div>
+              {!isDrop && <div className="stp w">
+                <button onClick={() => setSetField(exIdx, si, 'w', Math.max(0, Math.round(((s.w || 0) - 2.5) * 100) / 100))}><Icon name="minus" /></button>
+                <span className="val"><input type="number" value={s.w ?? ''} onChange={e => setSetField(exIdx, si, 'w', parseFloat(e.target.value) || 0)} style={{ width: 48, textAlign: 'center', background: 'transparent', border: 'none', color: 'inherit', fontSize: 'inherit' }} /></span>
+                <button onClick={() => setSetField(exIdx, si, 'w', Math.round(((s.w || 0) + 2.5) * 100) / 100)}><Icon name="plus" /></button>
+              </div>}
+              {!isDrop && <div className="stp r">
+                <button onClick={() => setSetField(exIdx, si, 'r', Math.max(0, (s.r || 0) - 1))}><Icon name="minus" /></button>
+                <span className="val"><input type="number" value={s.r ?? ''} onChange={e => setSetField(exIdx, si, 'r', parseInt(e.target.value) || 0)} style={{ width: 40, textAlign: 'center', background: 'transparent', border: 'none', color: 'inherit', fontSize: 'inherit' }} /></span>
+                <button onClick={() => setSetField(exIdx, si, 'r', (s.r || 0) + 1)}><Icon name="plus" /></button>
+              </div>}
+              {isDrop && <div style={{ flex: 1, fontSize: 12, color: 'var(--muted)', padding: '0 4px' }}>{(s.drops || []).map(d => `${d.w}×${d.r}`).join(' → ')}</div>}
+              <button className="iconbtn" style={{ ...tagStyle, fontSize: 14, minWidth: 24 }} onClick={() => tagSet(exIdx, si)}>{tagLabel}</button>
+            </div>
+          </div>
+        })}
+        <div style={{ height: 8 }} />
+        <Button size="sm" icon="plus" onClick={() => addSet(exIdx)}>{t('Add set')}</Button>
+      </div>
+      <div className="row">
+        {step > 1 && <Button icon="chevronLeft" onClick={() => setStep(s => s - 1)}>{t('Prev')}</Button>}
+        {step < exCount_ && <Button trailingIcon="chevronRight" onClick={() => setStep(s => s + 1)}>{t('Next')}</Button>}
+        {step === exCount_ && <Button variant="primary" onClick={save}>{t('Done — save workout')}</Button>}
+      </div>
+    </>}
+  </>
+}
+function retroWorkoutFlow() {
+  ui().openSheet(close => <RetroWorkoutFlow close={close} />)
+}
+
+export function startFlow(routineId) {
+  ui().openSheet(close => <StartOptionsSheet routineId={routineId} close={close} />)
+}
+export function beginWorkout(routineId, bw, warmup = false) {
   const st = S()
   const r = routineId ? st.routines.find(x => x.id === routineId) : null
   // The prescription is applied as the session is built, so you walk up to the bar with the
@@ -834,7 +1068,7 @@ export function beginWorkout(routineId, bw) {
     return { id: cfg.id, sg: cfg.sg, target: { ...cfg }, plan, sets: applyPrescription(buildSets(st, cfg), plan) }
   })
   update(s => {
-    s.active = { id: uid(), d: todayISO(), start: Date.now(), routineId, name: r ? r.name : t('Freestyle'), bw: bw || null, cur: 0, entries }
+    s.active = { id: uid(), d: todayISO(), start: Date.now(), routineId, name: r ? r.name : t('Freestyle'), bw: bw || null, cur: 0, entries, phase: warmup ? 'warmup' : 'workout', pauseMs: 0, pausedAt: null }
   })
   useUI.getState().stopRest()
   nav('/workout')
@@ -908,10 +1142,11 @@ function FinishSummary({ w, prs, e1prs = [], close }) {
     <div style={{ fontSize: 44, display: 'flex', justifyContent: 'center', color: 'var(--acc)' }}><Icon name="trophy" /></div>
     <h3 style={{ margin: '8px 0' }}>{t('Workout complete!')}</h3>
     <div className="tiles" style={{ textAlign: 'left' }}>
-      <div className="tile"><div className="l">{t('Duration')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{fmtDur(w.end - w.start)}</div></div>
+      <div className="tile"><div className="l">{t('Duration')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{fmtDur((w.end - w.start) - (w.pauseMs || 0))}</div></div>
       <div className="tile"><div className="l">{t('Volume')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{fmtVol(w.vol, st.unit)}</div></div>
       <div className="tile"><div className="l">{t('Sets')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{setsDone(w)}</div></div>
       <div className="tile"><div className="l">{t('PRs')}</div><div className="v" style={{ fontSize: 20 }}>{prs.length || '—'}</div></div>
+      {w.execMs > 0 && <div className="tile"><div className="l">{t('Time under tension')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{fmtDur(w.execMs)}</div></div>}
     </div>
     {(prs.length > 0 || e1prs.length > 0) && <div style={{ textAlign: 'left', marginBottom: 12 }}>
       {prs.map(id => <div key={id} className="small accent capitalize row" style={{ gap: 5 }}><Icon name="trophy" style={{ fontSize: 13 }} />{t('New PR:')} {(EXIDX[id] || {}).n || id}</div>)}
@@ -946,8 +1181,12 @@ function doFinishWorkout() {
     const rec = is1RMRecord(st, e.id, e)
     if (rec && !prs.includes(e.id)) e1prs.push({ id: e.id, ...rec })
   })
+  const endTs = Date.now()
+  const pauseMs = (A.pauseMs || 0) + (A.pausedAt ? endTs - A.pausedAt : 0)
   const w = {
-    id: A.id, d: A.d, start: A.start, end: Date.now(), routineId: A.routineId, name: A.name, bw: A.bw,
+    id: A.id, d: A.d, start: A.start, end: endTs, routineId: A.routineId, name: A.name, bw: A.bw,
+    phase: A.phase || 'workout',
+    pauseMs,
     // `target` (what the session prescribed) is kept alongside the sets: without it a
     // finished workout cannot say whether it hit its reps, and a timed session reads back
     // as "0 reps". It is what the progression engine works from.
@@ -955,10 +1194,19 @@ function doFinishWorkout() {
     prs
   }
   w.vol = workoutVolume(w)
+  w.execMs = w.entries.flatMap(e => e.sets).reduce((n, s) => n + (s.execSec || 0) * 1000, 0)
   update(s => {
     w.entries.forEach(e => {
       const mx = Math.max(0, ...e.sets.filter(x => x.done).map(x => x.w || 0), e.topW || 0)
       if (mx > 0) { const cur = s.exWeights[e.id]; if (!cur || mx > cur.w) s.exWeights[e.id] = { w: mx, d: w.d } }
+      e.sets.forEach(set => {
+        if (set.done && set.pr && set.w > 0) {
+          const cur = s.personalRecords[e.id]
+          if (!cur || set.w > cur.w || (set.w === cur.w && (set.r || 0) > (cur.r || 0))) {
+            s.personalRecords[e.id] = { w: set.w, r: set.r || 0, d: w.d }
+          }
+        }
+      })
     })
     s.workouts.push(w)
     s.active = null

@@ -12,7 +12,7 @@ import Media from '../components/Media.jsx'
 import { startFlow, exercisePicker, exConfigSheet, exerciseDetailSheet, topWeightSheet, finishWorkout, workoutCompleteSheet, confirmSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button, Check, NumberField } from '../components/ui.jsx'
-import { nextPrescription, applyPrescription } from '../lib/progression.js'
+import { nextPrescription, applyPrescription, swapEntry } from '../lib/progression.js'
 import { glyphOf } from '../lib/glyphs.js'
 
 /* ---------- start chooser (no active workout) ---------- */
@@ -44,17 +44,33 @@ function StartChooser() {
 }
 
 /* ---------- elapsed clock (isolated so the workout tree doesn't re-render every second) ---------- */
-function Elapsed({ start }) {
-  const [t, setT] = useState('0:00')
+function Elapsed({ start, pauseMs, pausedAt }) {
+  const [label, setLabel] = useState('0:00')
   useEffect(() => {
-    const tick = () => { const s = Math.floor((Date.now() - start) / 1000); setT(Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0')) }
+    const tick = () => {
+      const eff = Math.max(0, Date.now() - start - (pauseMs || 0) - (pausedAt ? Date.now() - pausedAt : 0))
+      const s = Math.floor(eff / 1000)
+      setLabel(Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'))
+    }
     tick(); const iv = setInterval(tick, 1000); return () => clearInterval(iv)
-  }, [start])
-  return <span>{t}</span>
+  }, [start, pauseMs, pausedAt])
+  return <span>{label}</span>
 }
 
+/* ---------- per-set execution timer (isolated — same pattern as Elapsed) ---------- */
+function ExecClock({ startTs }) {
+  const [label, setLabel] = useState('0:00')
+  useEffect(() => {
+    const tick = () => { const s = Math.floor((Date.now() - startTs) / 1000); setLabel(Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0')) }
+    tick(); const iv = setInterval(tick, 1000); return () => clearInterval(iv)
+  }, [startTs])
+  return <span>{label}</span>
+}
+
+const fmtExec = sec => Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0')
+
 /* ---------- one exercise block (reps: weight×reps · time: a held duration · cardio: duration+speed) ---------- */
-function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemoveSet, onStartTimed }) {
+function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemoveSet, onStartTimed, onSwap, onTag, onDropField, onAddDrop, onStartExec }) {
   const S = useStore(s => s.S)
   const working = useUI(s => s.work)
   const entry = S.active.entries[entryIdx]
@@ -85,12 +101,11 @@ function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemov
   const col2 = cardio ? { f: 'speed', step: 0.5, dec: true, hd: t('Speed (km/h)') }
     : timed ? ((bw && !added) ? null : loadCol)
       : (bw && !added) ? null : repCol
-  // Effort (RIR or RPE, whichever the profile logs) only makes sense for weighted rep sets,
-  // not cardio/timed holds, and is opt-in since it adds a third stepper to every row. `opt`
-  // because an unlogged effort is not the same as 0 — RIR 0 says the set went to failure.
-  const kind = effortOf(S)
+  // Effort (RIR or RPE) is always shown for weighted rep sets. RIR is the default; RPE only
+  // when the profile explicitly chose it. `opt` because unlogged effort is not the same as 0.
+  const kind = effortOf(S) === 'rpe' ? 'rpe' : 'rir'
   const eff = EFFORT[kind]
-  const col3 = mode === 'reps' && eff ? { ...eff, eff: kind, dec: true, opt: true, hd: t(eff.hd) } : null
+  const col3 = mode === 'reps' ? { ...eff, eff: kind, dec: true, opt: true, hd: t(eff.hd) } : null
   // The effort column walks its own scale — see stepEffort. Weight and reps step up from 0
   // with no ceiling, as they always did.
   const bump = (s, i, col, dir) => {
@@ -112,7 +127,10 @@ function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemov
     <Media ex={ex} key={entry.id} compact={compact} minimizable />
     <div className="row between" style={{ marginBottom: 6 }}>
       <div style={{ fontSize: compact ? 17 : 20, fontWeight: 600, letterSpacing: '-.02em', textTransform: 'capitalize', lineHeight: 1.2 }}>{ex.n}</div>
-      <button className="iconbtn" aria-label={t('Details')} onClick={() => exerciseDetailSheet(ex)}><Icon name="info" /></button>
+      <div className="row" style={{ gap: 4, flex: 'none' }}>
+        {onSwap && <button className="iconbtn" aria-label={t('Swap exercise')} onClick={onSwap}><Icon name="shuffle" /></button>}
+        <button className="iconbtn" aria-label={t('Details')} onClick={() => exerciseDetailSheet(ex)}><Icon name="info" /></button>
+      </div>
     </div>
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
       {cardio && <span className="tag acc"><Icon name="figureRun" />{t('Cardio')}</span>}
@@ -130,18 +148,63 @@ function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemov
     </div>}
     <div className="card" style={{ marginTop: 10, marginBottom: 0 }}>
       {/* the header carries the same eff3 sizing as the rows, or the labels drift off their columns */}
-      <div className={'sethead' + (col3 ? ' eff3' : '')}><span className="n-sp" /><span className="w-sp">{col1.hd}</span>{col2 && <span className="r-sp">{col2.hd}</span>}{col3 && <span className="eff-sp">{col3.hd}</span>}{timed && <span className="ck-sp" />}<span className="ck-sp" /></div>
-      {entry.sets.map((s, i) => <div key={i} className={'setrow' + (s.done ? ' done' : '') + (col3 ? ' eff3' : '')}>
-        <div className="n">{i + 1}</div>
-        {cell(s, i, col1, 'w')}
-        {col2 && cell(s, i, col2, 'r')}
-        {col3 && cell(s, i, col3, 'eff')}
-        {/* A timed set is started, not typed: the timer counts the hold down and checks the
-            set off itself. The checkbox stays for anyone who timed it on their own watch. */}
-        {timed && <button className="setgo" aria-label={t('Start set')} disabled={s.done || !!working}
-          onClick={() => onStartTimed(i)}><Icon name="play" /></button>}
-        <Check checked={s.done} onChange={() => onToggle(i)} />
-      </div>)}
+      <div className={'sethead' + (col3 ? ' eff3' : '')}><span className="n-sp" /><span className="w-sp">{col1.hd}</span>{col2 && <span className="r-sp">{col2.hd}</span>}{col3 && <span className="eff-sp">{col3.hd}</span>}{timed && <span className="ck-sp" />}<span className="ck-sp" /><span className="ck-sp" /></div>
+      {entry.sets.map((s, i) => {
+        const isDrop = s.type === 'drop'
+        const isPR = !!s.pr
+        const tagLabel = isDrop ? 'D' : isPR ? '★' : '·'
+        const tagStyle = isDrop
+          ? { color: 'var(--acc)', fontWeight: 700 }
+          : isPR ? { color: '#f59e0b', fontWeight: 700 }
+          : { opacity: 0.3 }
+        return <div key={i}>
+          <div className={'setrow' + (s.done ? ' done' : '') + (col3 ? ' eff3' : '')}>
+            <div className="n">{i + 1}</div>
+            {onStartExec && !s.done && (
+              <button className={'setgo exec-timer' + (s.startTs ? ' running' : '')}
+                aria-label={t('Start set timer')}
+                onClick={() => onStartExec(i)}>
+                {s.startTs ? <ExecClock startTs={s.startTs} /> : <Icon name="play" />}
+              </button>
+            )}
+            {onStartExec && s.done && s.execSec != null && (
+              <span className="exec-done">{fmtExec(s.execSec)}</span>
+            )}
+            {!isDrop && cell(s, i, col1, 'w')}
+            {!isDrop && col2 && cell(s, i, col2, 'r')}
+            {!isDrop && col3 && cell(s, i, col3, 'eff')}
+            {isDrop && <div style={{ flex: 1, fontSize: 12, color: 'var(--muted)', padding: '0 4px' }}>{(s.drops || []).map(d => `${d.w}×${d.r}`).join(' → ')}</div>}
+            {/* A timed set is started, not typed: the timer counts the hold down and checks the
+                set off itself. The checkbox stays for anyone who timed it on their own watch. */}
+            {timed && <button className="setgo" aria-label={t('Start set')} disabled={s.done || !!working}
+              onClick={() => onStartTimed(i)}><Icon name="play" /></button>}
+            {onTag && <button className="iconbtn" style={{ ...tagStyle, fontSize: 14, minWidth: 24 }}
+              aria-label={isDrop ? t('Drop set') : isPR ? t('Personal Record') : '—'}
+              onClick={() => onTag(i)}>{tagLabel}</button>}
+            <Check checked={s.done} onChange={() => onToggle(i)} />
+          </div>
+          {isDrop && Array.isArray(s.drops) && <>
+            {s.drops.map((d, di) => <div key={di} className={'setrow' + (s.done ? ' done' : '')} style={{ paddingLeft: 24, background: 'var(--surface2)' }}>
+              <div className="n" style={{ fontSize: 10, opacity: 0.6 }}>↳</div>
+              <div className="stp w">
+                <button aria-label="Decrease" onClick={() => onDropField && onDropField(i, di, 'w', Math.max(0, (d.w || 0) - 2.5))}><Icon name="minus" /></button>
+                <span className="val"><NumberField decimal value={d.w ?? ''} onChange={v => onDropField && onDropField(i, di, 'w', v)} /></span>
+                <button aria-label="Increase" onClick={() => onDropField && onDropField(i, di, 'w', Math.round(((d.w || 0) + 2.5) * 100) / 100)}><Icon name="plus" /></button>
+              </div>
+              <div className="stp r">
+                <button aria-label="Decrease" onClick={() => onDropField && onDropField(i, di, 'r', Math.max(0, (d.r || 0) - 1))}><Icon name="minus" /></button>
+                <span className="val"><NumberField value={d.r ?? ''} onChange={v => onDropField && onDropField(i, di, 'r', v)} /></span>
+                <button aria-label="Increase" onClick={() => onDropField && onDropField(i, di, 'r', (d.r || 0) + 1)}><Icon name="plus" /></button>
+              </div>
+              {col3 && <div className="eff-sp" />}
+              <div className="ck-sp" />
+            </div>)}
+            <div style={{ paddingLeft: 24, paddingBottom: 4 }}>
+              <Button size="sm" icon="plus" onClick={() => onAddDrop && onAddDrop(i)}>{t('Add drop')}</Button>
+            </div>
+          </>}
+        </div>
+      })}
       <div style={{ height: 8 }} />
       <div className="row">
         <Button size="sm" icon="minus" disabled={entry.sets.length <= 1} onClick={onRemoveSet}>{t('Remove set')}</Button>
@@ -157,6 +220,7 @@ function ActiveWorkout() {
   const S = useStore(s => s.S)
   const update = useStore(s => s.update)
   const { startRest, stopRest } = useUI()
+  const restActive = useUI(s => s.timer != null)
   const A = S.active
   const units = supersetUnits(A.entries)
   const cur = Math.min(A.cur, Math.max(0, A.entries.length - 1))
@@ -167,11 +231,35 @@ function ActiveWorkout() {
   const total = A.entries.reduce((n, e) => n + e.sets.length, 0)
   const done = setsDoneActive(A)
 
+  const isPaused = !!A.pausedAt
+  const pause = () => { update(s => { s.active.pausedAt = Date.now() }); stopRest() }
+  const resume = () => update(s => { s.active.pauseMs = (s.active.pauseMs || 0) + Date.now() - s.active.pausedAt; s.active.pausedAt = null })
+
   const mutEntry = (idx, fn) => update(s => { fn(s.active.entries[idx]) }, true)
+
+  const startExec = (idx, i) => mutEntry(idx, e => { if (!e.sets[i].startTs) e.sets[i].startTs = Date.now() })
   // Clearing an optional field drops the key rather than storing null, so a set only carries
   // what was actually logged — in the session, in history and in a backup.
   const setField = (idx, i, field, v) => mutEntry(idx, e => {
     if (v == null) delete e.sets[i][field]; else e.sets[i][field] = v
+  })
+  const tagSet = (idx, i) => mutEntry(idx, e => {
+    const s = e.sets[i]
+    if (!s.type && !s.pr) {
+      s.type = 'drop'
+      if (!s.drops) s.drops = [{ w: s.w || 0, r: s.r || 0 }, { w: Math.max(0, (s.w || 0) - 5), r: s.r || 0 }]
+    } else if (s.type === 'drop') {
+      delete s.type; delete s.drops; s.pr = true
+    } else {
+      delete s.pr
+    }
+  })
+  const dropField = (idx, i, di, field, v) => mutEntry(idx, e => {
+    if (v == null) delete e.sets[i].drops[di][field]; else e.sets[i].drops[di][field] = v
+  })
+  const addDrop = (idx, i) => mutEntry(idx, e => {
+    const last = e.sets[i].drops[e.sets[i].drops.length - 1]
+    e.sets[i].drops.push({ w: last ? Math.max(0, (last.w || 0) - 5) : 0, r: last ? (last.r || 0) : 0 })
   })
   const modeAt = idx => modeOf({ ...(A.entries[idx].target || {}), id: A.entries[idx].id })
   const addSet = idx => mutEntry(idx, e => {
@@ -182,6 +270,13 @@ function ActiveWorkout() {
     else e.sets.push({ w: l ? l.w : 0, r: l ? l.r : e.target.reps, done: false })
   })
   const removeSet = idx => mutEntry(idx, e => { if (e.sets.length > 1) e.sets.pop() })
+
+  // Machine taken? Swap the exercise in place — same slot (and superset link), new exercise with
+  // its own progression and history. The routine template is untouched; this is only this session.
+  const swap = idx => exercisePicker(ex => exConfigSheet(ex, null, cfg => update(s => {
+    const routine = s.routines.find(r => r.id === s.active.routineId)
+    s.active.entries[idx] = swapEntry(s, ex, cfg, routine, s.active.entries[idx].sg)
+  }), null, S.routines.find(r => r.id === A.routineId)))
 
   // A timed set is held, not typed. The work timer records what was actually held — an early
   // finish logs 0:38 of a 0:45 target rather than crediting the full prescription — and then
@@ -203,6 +298,9 @@ function ActiveWorkout() {
     mutEntry(idx, e => {
       e.sets[i].done = !e.sets[i].done
       if (e.sets[i].done) {
+        const now = Date.now()
+        e.sets[i].endTs = now
+        if (e.sets[i].startTs) { e.sets[i].execSec = Math.round((now - e.sets[i].startTs) / 1000); delete e.sets[i].startTs }
         beep(S.sound, 1040, 0.12); vibrate(30)
         const isLastExInUnit = idx === unit[unit.length - 1]
         const unitDone = unit.every(ui => (ui === idx ? e : A.entries[ui]).sets.every(x => x.done))
@@ -254,28 +352,64 @@ function ActiveWorkout() {
   return <div className="narrow">
     <div className="hdr">
       <button className="iconbtn" aria-label={t('Discard')} onClick={() => confirmSheet({ title: t('Discard workout?'), message: t('The sets you logged in this session will be lost.'), confirmText: t('Discard'), danger: true, onConfirm: () => { update(s => { s.active = null }); stopRest(); nav('/home') } })}><Icon name="xmark" /></button>
-      <div style={{ textAlign: 'center' }}><div style={{ fontWeight: 600 }}>{A.name}</div><div className="sub"><Elapsed start={A.start} /> · {t('{0} sets', done + '/' + total)}</div></div>
-      <button className="iconbtn" style={{ color: 'var(--acc)' }} aria-label={t('Finish')} onClick={finishWorkout}><Icon name="check" /></button>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontWeight: 600 }}>{A.name}</div>
+        <div className="sub">
+          <Elapsed start={A.start} pauseMs={A.pauseMs || 0} pausedAt={A.pausedAt} />
+          {isPaused && <span style={{ color: 'var(--yellow)', marginLeft: 4 }}>· {t('Paused')}</span>}
+          {!isPaused && <span> · {t('{0} sets', done + '/' + total)}</span>}
+        </div>
+      </div>
+      <div className="row" style={{ gap: 4 }}>
+        <button className="iconbtn" style={{ color: isPaused ? 'var(--yellow)' : undefined }} aria-label={isPaused ? t('Resume') : t('Pause')} onClick={isPaused ? resume : pause}><Icon name={isPaused ? 'play' : 'pause'} /></button>
+        <button className="iconbtn" style={{ color: 'var(--acc)' }} aria-label={t('Finish')} onClick={finishWorkout}><Icon name="check" /></button>
+      </div>
     </div>
     <div className="wprog"><i style={{ width: (total ? done / total * 100 : 0) + '%' }} /></div>
+    {isPaused && <div className="paused-banner">{t('Workout paused — time not counting')}</div>}
+    {A.phase === 'warmup' && <div className="card" style={{ marginBottom: 10, borderColor: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+      <span style={{ fontWeight: 600, color: '#f59e0b' }}>{t('Warm-up')}</span>
+      <Button size="sm" onClick={() => update(s => { s.active.phase = 'workout' })}>{t('Switch to workout')}</Button>
+    </div>}
 
-    {A.entries.length ? <>
-      <div className="muted small" style={{ marginBottom: 6 }}>{isSuperset ? t('Superset {0} / {1}', unitIdx + 1, units.length) : t('Exercise {0} / {1}', unitIdx + 1, units.length)}</div>
-      {isSuperset ? (
-        <div className="ss-card">
-          <div className="ss-hd"><Icon name="link" />{t('Superset · do these back-to-back, rest after both')}</div>
-          {unit.map((idx, k) => <div key={idx} className="ss-ex">
-            {k > 0 && <div className="ss-amp">+</div>}
-            <ExerciseBlock entryIdx={idx} compact
-              onToggle={i => toggle(idx, i)} onField={(i, f, v) => setField(idx, i, f, v)} onAddSet={() => addSet(idx)} onRemoveSet={() => removeSet(idx)} onStartTimed={i => startTimed(idx, i)} />
-          </div>)}
-        </div>
-      ) : (
-        <ExerciseBlock entryIdx={cur} onToggle={i => toggle(cur, i)} onField={(i, f, v) => setField(cur, i, f, v)} onAddSet={() => addSet(cur)} onRemoveSet={() => removeSet(cur)} onStartTimed={i => startTimed(cur, i)} />
-      )}
-    </> : <div className="empty"><div className="ico"><Icon name="shuffle" /></div>{t('Freestyle workout — add your first exercise.')}</div>}
+    <div className={A.entries.length ? 'workout-split' : undefined}>
+      {A.entries.length > 1 && <aside className="workout-exnav">
+        {units.map((u, ui) => {
+          const idx = u[0]
+          const e = A.entries[idx]
+          const ex = exOr(e.id)
+          const allDone = u.every(i => A.entries[i].sets.every(s => s.done))
+          const isCur = u.includes(cur)
+          return <div key={idx} className={'workout-exnav-item' + (isCur ? ' cur' : '')}
+            onClick={() => update(s => { s.active.cur = idx })}>
+            <span className={allDone ? 'done-dot' : 'open-dot'} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ex.n}</span>
+          </div>
+        })}
+      </aside>}
+      <div>
+        {A.entries.length ? <>
+          <div className="muted small" style={{ marginBottom: 6 }}>{isSuperset ? t('Superset {0} / {1}', unitIdx + 1, units.length) : t('Exercise {0} / {1}', unitIdx + 1, units.length)}</div>
+          {isSuperset ? (
+            <div className="ss-card">
+              <div className="ss-hd"><Icon name="link" />{t('Superset · do these back-to-back, rest after both')}</div>
+              {unit.map((idx, k) => <div key={idx} className="ss-ex">
+                {k > 0 && <div className="ss-amp">+</div>}
+                <ExerciseBlock entryIdx={idx} compact
+                  onToggle={i => toggle(idx, i)} onField={(i, f, v) => setField(idx, i, f, v)} onAddSet={() => addSet(idx)} onRemoveSet={() => removeSet(idx)} onStartTimed={i => startTimed(idx, i)} onSwap={() => swap(idx)}
+                  onTag={i => tagSet(idx, i)} onDropField={(i, di, f, v) => dropField(idx, i, di, f, v)} onAddDrop={i => addDrop(idx, i)} onStartExec={i => startExec(idx, i)} />
+              </div>)}
+            </div>
+          ) : (
+            <ExerciseBlock entryIdx={cur} onToggle={i => toggle(cur, i)} onField={(i, f, v) => setField(cur, i, f, v)} onAddSet={() => addSet(cur)} onRemoveSet={() => removeSet(cur)} onStartTimed={i => startTimed(cur, i)} onSwap={() => swap(cur)}
+              onTag={i => tagSet(cur, i)} onDropField={(i, di, f, v) => dropField(cur, i, di, f, v)} onAddDrop={i => addDrop(cur, i)} onStartExec={i => startExec(cur, i)} />
+          )}
+        </> : <div className="empty"><div className="ico"><Icon name="shuffle" /></div>{t('Freestyle workout — add your first exercise.')}</div>}
+      </div>
+    </div>
 
     <div style={{ height: 12 }} />
+    {!restActive && <><Button icon="timer" onClick={() => startRest(S.restSec)}>{t('Start rest')}</Button><div style={{ height: 8 }} /></>}
     <div className="row">
       <Button icon="chevronLeft" disabled={unitIdx <= 0} onClick={() => update(s => { s.active.cur = units[unitIdx - 1][0] })}>{t('Prev')}</Button>
       <Button trailingIcon="chevronRight" disabled={unitIdx < 0 || unitIdx >= units.length - 1} onClick={() => update(s => { s.active.cur = units[unitIdx + 1][0] })}>{t('Next')}</Button>
