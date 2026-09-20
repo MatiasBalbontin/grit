@@ -1,14 +1,49 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
-import { effectiveRoutine, effectiveRoutineId, streakWeeks, lastBW, setsDoneActive } from '../lib/history.js'
+import { effectiveRoutine, effectiveRoutineId, streakWeeks, lastBW, setsDoneActive, consistencyScore } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, isoOf, weekKey, DAYS } from '../lib/format.js'
 import { t, dateLocale } from '../lib/i18n.js'
-import { bwSheet, goalSheet, dayOverrideSheet, calendarSheet, startFlow, loadStarterPlan, bwDeltaColor } from '../sheets.jsx'
+import { bwSheet, goalSheet, dayOverrideSheet, calendarSheet, startFlow, loadStarterPlan, bwDeltaColor, prManagerSheet } from '../sheets.jsx'
 import LineChart from '../components/LineChart.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 import { glyphOf } from '../lib/glyphs.js'
+import { EXIDX } from '../lib/exercises.js'
+
+function PRWidget({ S }) {
+  const tracked = S.trackedPRExercises || []
+  if (!tracked.length) return <div className="card tappable" style={{ cursor: 'pointer' }} onClick={prManagerSheet}>
+    <div className="row" style={{ gap: 9 }}>
+      <span className="lrow-i" style={{ color: '#f59e0b' }}><Icon name="trophy" /></span>
+      <div>
+        <div style={{ fontWeight: 600 }}>{t('Your records')}</div>
+        <div className="muted small">{t('Pick exercises to track')}</div>
+      </div>
+    </div>
+  </div>
+  return <div className="card tappable" style={{ cursor: 'pointer' }} onClick={prManagerSheet}>
+    <div className="row between" style={{ marginBottom: 10 }}>
+      <div className="row" style={{ gap: 6 }}>
+        <Icon name="trophy" style={{ color: '#f59e0b' }} />
+        <h2 style={{ margin: 0 }}>{t('Your records')}</h2>
+      </div>
+      <span className="iconbtn"><Icon name="chevronRight" className="chev" /></span>
+    </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {tracked.slice(0, 4).map(id => {
+        const ex = EXIDX[id] || {}
+        const pr = S.personalRecords[id]
+        return <div key={id} className="row between">
+          <span className="small capitalize" style={{ color: 'var(--fg)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ex.n || id}</span>
+          {pr
+            ? <span className="small" style={{ color: '#f59e0b', fontWeight: 600, flexShrink: 0 }}>★ {fmtNum(pr.w)} {S.unit} × {pr.r}</span>
+            : <span className="small muted">{t('No PR logged yet')}</span>}
+        </div>
+      })}
+    </div>
+  </div>
+}
 
 // Home = what to do now + a quick glance. Deep charts & history live in Stats.
 export default function Home() {
@@ -16,6 +51,7 @@ export default function Home() {
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
   const [weekOffset, setWeekOffset] = useState(0)
+  const [bwExpanded, setBwExpanded] = useState(false)
 
   const today = new Date()
   const routine = effectiveRoutine(S, todayISO())
@@ -23,6 +59,7 @@ export default function Home() {
   const bw = lastBW(S)
   const prevBW = S.bodyweight.length > 1 ? S.bodyweight[S.bodyweight.length - 2] : null
   const delta = bw && prevBW ? bw.w - prevBW.w : null
+  const consistency = consistencyScore(S, 28)
 
   const monday = new Date(today); monday.setDate(today.getDate() - ((today.getDay() + 6) % 7) + weekOffset * 7)
   const doneDays = new Set(S.workouts.map(w => w.d))
@@ -47,7 +84,7 @@ export default function Home() {
 
   return <div className="narrow">
     <div className="hdr">
-      <div><h1>{user ? t('Hi {0}', user.name) : 'openGym'}</h1><div className="sub">{today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}</div></div>
+      <div><h1>{user ? t('Hi {0}', user.name) : 'Grit'}</h1><div className="sub">{today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}</div></div>
       <button className="iconbtn" onClick={() => nav('/settings')} aria-label={t('Settings')}><Icon name="gear" /></button>
     </div>
 
@@ -86,36 +123,7 @@ export default function Home() {
       </div>
     )}
 
-    <div className="card">
-      <div className="row between" style={{ marginBottom: 6 }}>
-        <h2 style={{ margin: 0 }}>{t('Body weight')}</h2>
-        <div className="row" style={{ gap: 8 }}>
-          <Button size="sm" icon="target" style={S.targetW ? { color: 'var(--yellow)' } : undefined} onClick={goalSheet}>{S.targetW ? fmtNum(S.targetW) : t('Goal')}</Button>
-          <Button size="sm" icon="plus" onClick={() => bwSheet()}>{t('Log')}</Button>
-        </div>
-      </div>
-      {bw ? <>
-        <div className="row" style={{ gap: 8, alignItems: 'baseline' }}>
-          <div className="big">{fmtNum(bw.w)} <span className="muted" style={{ fontSize: '1rem' }}>{S.unit}</span></div>
-          {/* only when it actually moved — an unchanged weight used to read as "− 0" */}
-          {!!delta && (
-            <span className="small row" style={{ gap: 2, fontWeight: 500, color: bwDeltaColor(delta, bw.w) }}>
-              <Icon name={delta > 0 ? 'arrowUp' : 'arrowDown'} style={{ fontSize: 12 }} />
-              {fmtNum(Math.abs(delta))}
-            </span>
-          )}
-          <span className="dim small" style={{ marginLeft: 'auto' }}>{fmtDate(bw.d, true)}</span>
-        </div>
-        {S.targetW && (
-          <div className="small row" style={{ color: 'var(--yellow)', marginTop: 4, gap: 5 }}>
-            <Icon name="target" style={{ fontSize: 13 }} />
-            <span>{t('Goal')} {fmtNum(S.targetW)} {S.unit} · {Math.abs(S.targetW - bw.w) < 0.05 ? t('reached!') : t(S.targetW > bw.w ? '{0} to gain' : '{0} to lose', fmtNum(Math.abs(S.targetW - bw.w)) + ' ' + S.unit)}</span>
-          </div>
-        )}
-        <div className="chart" style={{ marginTop: 8 }}><LineChart points={bwPoints} h={130} unit={S.unit} goal={S.targetW} /></div>
-      </> : <div className="muted small">{t("No entries yet — log your weight to start the curve. It's also asked before every workout.")}</div>}
-    </div>
-
+    {/* Consistency card — primary metric */}
     <div className="card tappable" style={{ cursor: 'pointer' }} onClick={() => calendarSheet()}>
       <div className="row between">
         <div>
@@ -123,10 +131,52 @@ export default function Home() {
             <Icon name="flame" style={{ color: 'var(--orange)' }} />
             {t('{0} week streak', streakWeeks(S))}
           </div>
-          <div className="muted small" style={{ marginTop: 2 }}>{wThisWeek}{plannedPerWeek ? ' / ' + plannedPerWeek : ''} {t('this week')} · {t(S.workouts.length === 1 ? '{0} workout total' : '{0} workouts total', S.workouts.length)}</div>
+          <div className="muted small" style={{ marginTop: 2 }}>
+            {consistency.planned > 0
+              ? t('{0}% consistency', consistency.pct) + ' · ' + t('{0} of {1} sessions', consistency.trained, consistency.planned)
+              : `${wThisWeek}${plannedPerWeek ? ' / ' + plannedPerWeek : ''} ${t('this week')}`}
+            {' · '}{t(S.workouts.length === 1 ? '{0} workout total' : '{0} workouts total', S.workouts.length)}
+          </div>
         </div>
         <Icon name="calendar" className="chev" style={{ fontSize: 20 }} />
       </div>
+    </div>
+
+    {/* PR widget */}
+    <PRWidget S={S} />
+
+    {/* Body weight — secondary */}
+    <div className="card">
+      <div className="row between" style={{ marginBottom: bwExpanded ? 6 : 0 }}>
+        <button className="row" style={{ gap: 7, background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit' }} onClick={() => setBwExpanded(v => !v)}>
+          <h2 style={{ margin: 0 }}>{t('Body weight')}</h2>
+          {bw && <span className="muted small">{fmtNum(bw.w)} {S.unit}</span>}
+          {!!delta && <span className="small row" style={{ gap: 2, fontWeight: 500, color: bwDeltaColor(delta, bw.w) }}>
+            <Icon name={delta > 0 ? 'arrowUp' : 'arrowDown'} style={{ fontSize: 11 }} />{fmtNum(Math.abs(delta))}
+          </span>}
+          <Icon name={bwExpanded ? 'chevronUp' : 'chevronDown'} style={{ fontSize: 13, opacity: 0.5 }} />
+        </button>
+        <div className="row" style={{ gap: 8 }}>
+          <Button size="sm" icon="plus" onClick={() => bwSheet()}>{t('Log')}</Button>
+        </div>
+      </div>
+      {bwExpanded && <>
+        {bw ? <>
+          <div className="row" style={{ gap: 8, alignItems: 'baseline' }}>
+            <div className="big">{fmtNum(bw.w)} <span className="muted" style={{ fontSize: '1rem' }}>{S.unit}</span></div>
+            <span className="dim small" style={{ marginLeft: 'auto' }}>{fmtDate(bw.d, true)}</span>
+          </div>
+          {S.targetW && (
+            <div className="small row" style={{ color: 'var(--yellow)', marginTop: 4, gap: 5 }}>
+              <Icon name="target" style={{ fontSize: 13 }} />
+              <span>{t('Goal')} {fmtNum(S.targetW)} {S.unit} · {Math.abs(S.targetW - bw.w) < 0.05 ? t('reached!') : t(S.targetW > bw.w ? '{0} to gain' : '{0} to lose', fmtNum(Math.abs(S.targetW - bw.w)) + ' ' + S.unit)}</span>
+            </div>
+          )}
+          <div className="chart" style={{ marginTop: 8 }}><LineChart points={bwPoints} h={110} unit={S.unit} goal={S.targetW} /></div>
+        </> : <div className="muted small" style={{ marginTop: 6 }}>{t("No entries yet — log your weight to start the curve.")}</div>}
+        <div style={{ height: 8 }} />
+        <Button size="sm" icon="target" style={S.targetW ? { color: 'var(--yellow)' } : undefined} onClick={goalSheet}>{S.targetW ? fmtNum(S.targetW) + ' ' + S.unit : t('Goal')}</Button>
+      </>}
     </div>
   </div>
 }

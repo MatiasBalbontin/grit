@@ -22,6 +22,7 @@ export const useUI = create((set, get) => ({
   toastMsg: '',
   timer: null,         // rest countdown between sets — { left, total, endsAt }
   work: null,          // work countdown DURING a timed set (issue #16) — { left, total, endsAt, label }
+  signal: null,        // event signal for celebrations — { type, data, id } | null
 
   openSheet(render, { kind = 'sheet', locked = false } = {}) {
     const id = uid()
@@ -127,5 +128,14 @@ export const useUI = create((set, get) => ({
     if (workTick) document.removeEventListener('visibilitychange', workTick); workTick = null
     workDone = null
     set({ work: null })
+  },
+
+  signal(type, data) {
+    const id = uid()
+    set({ signal: { type, data, id } })
+    // Auto-clear after animation completes (max 2.5s)
+    setTimeout(() => {
+      if (get().signal?.id === id) set({ signal: null })
+    }, 2500)
   }
 }))

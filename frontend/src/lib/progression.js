@@ -16,7 +16,7 @@
 //   · fewer sets than prescribed                       → miss
 // So a session that fell apart can never advance the load as though it had succeeded.
 
-import { modeOf, repStep } from './history.js'
+import { modeOf, repStep, buildSets } from './history.js'
 import { EXIDX } from './exercises.js'
 
 export const POLICIES = ['off', 'linear', 'greyskull', 'double', 'time']
@@ -156,6 +156,9 @@ export function stallCount(sessions) {
  * undefined and the caller keeps whatever the plan said.
  */
 export function nextPrescription(S, cfg, routine) {
+  // Per-set custom weights (easy mode) are a manual plan: the user set each set on purpose, so
+  // auto-progression neither overrides them nor shows a hint. buildSets carries the values.
+  if (Array.isArray(cfg.series) && cfg.series.length) return { policy: 'off', kind: 'off' }
   const mode = modeOf(cfg)
   const policy = policyFor(cfg, routine, mode)
   const unit = S.unit || 'kg'
@@ -265,4 +268,13 @@ export function applyPrescription(sets, p) {
     while (out.length < p.sets) out.push({ ...seed, done: false })
   }
   return out
+}
+
+// Swap an exercise in place during a session (machine taken): build the new entry for the same
+// slot, with its own progression and history. sg comes from the slot being replaced so the
+// superset link survives; the routine template is untouched. Pure — deciding what you lift next.
+export function swapEntry(S, ex, cfg, routine, prevSg) {
+  const full = { ...cfg, id: ex.id }
+  const plan = nextPrescription(S, full, routine)
+  return { id: ex.id, sg: prevSg, target: { ...cfg }, plan, sets: applyPrescription(buildSets(S, full), plan) }
 }

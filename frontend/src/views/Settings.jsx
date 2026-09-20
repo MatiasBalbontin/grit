@@ -11,6 +11,7 @@ import { t, LANGS, INSTR_LANGS } from '../lib/i18n.js'
 import { DEMO, REPO } from '../lib/demo.js'
 import { MOBILE, shareExport, syncReminder } from '../lib/mobile.js'
 import { loadStarterPlan, confirmSheet, importFromApp } from '../sheets.jsx'
+import { checkUpdate } from '../lib/update.js'
 import Icon from '../components/Icon.jsx'
 import { Section, Row, SelectRow, Switch, Segmented, Button, TextField } from '../components/ui.jsx'
 
@@ -113,6 +114,10 @@ export default function Settings() {
           options={[{ value: 'kg', label: 'kg' }, { value: 'lb', label: 'lb' }]}
           value={S.unit} onChange={v => update(s => { s.unit = v })} />
       </Row>
+      <Row icon="wrench" iconTint="var(--purple)" title={t('Easy mode')}
+        subtitle={t('Edit a routine inline — series, reps, unilateral & weight per set. No advanced options.')}>
+        <Switch checked={!!S.easyMode} onChange={v => update(s => { s.easyMode = v })} />
+      </Row>
     </Section>
 
     {/* ---------- during a workout ---------- */}
@@ -186,6 +191,17 @@ export default function Settings() {
     {/* Reset after reading so picking the same file twice still fires onChange. */}
     <input ref={importRef} type="file" accept=".csv,.xml,text/csv,text/xml" style={{ display: 'none' }}
       onChange={ev => { const f = ev.target.files[0]; if (f) importFromApp(f); ev.target.value = '' }} />
+
+    {/* Actualizaciones para la app nativa */}
+    {MOBILE && <Section title={t('Mobile')}>
+      <Row icon="download" iconTint="var(--green)" title={t('Check for updates')} onClick={async () => {
+        toast(t('Checking...'))
+        const res = await checkUpdate()
+        if (res.error) toast(res.error)
+        else if (!res.updateAvailable) toast(t('You are up to date!'))
+        else confirmSheet({ title: t('Update available: {0}', res.version), message: res.notes, confirmText: t('Download'), onConfirm: () => window.open(res.downloadUrl, '_system') })
+      }} />
+    </Section>}
 
     {/* "Add to Home screen" makes no sense inside the native app */}
     {!MOBILE && <Section title={t('Tip')}>

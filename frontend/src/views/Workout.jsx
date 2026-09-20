@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { exOr } from '../lib/exercises.js'
-import { effectiveRoutine, lastEntryFor, bestWeightFor, buildSets, setsDoneActive, supersetUnits, unitOf, setLabel, modeOf, isBw, isPerSide, sideReps, repStep, EFFORT, effortOf, stepEffort, capEffort } from '../lib/history.js'
+import { effectiveRoutine, lastEntryFor, bestWeightFor, buildSets, setsDoneActive, supersetUnits, unitOf, setLabel, modeOf, isBw, isPerSide, sideReps, repStep, EFFORT, effortOf, stepEffort, capEffort, streakWeeks } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, exCount, DAYN } from '../lib/format.js'
 import { beep, vibrate } from '../lib/sound.js'
 import { t } from '../lib/i18n.js'
@@ -243,17 +243,25 @@ function ActiveWorkout() {
   const setField = (idx, i, field, v) => mutEntry(idx, e => {
     if (v == null) delete e.sets[i][field]; else e.sets[i][field] = v
   })
-  const tagSet = (idx, i) => mutEntry(idx, e => {
-    const s = e.sets[i]
-    if (!s.type && !s.pr) {
-      s.type = 'drop'
-      if (!s.drops) s.drops = [{ w: s.w || 0, r: s.r || 0 }, { w: Math.max(0, (s.w || 0) - 5), r: s.r || 0 }]
-    } else if (s.type === 'drop') {
-      delete s.type; delete s.drops; s.pr = true
-    } else {
-      delete s.pr
+  const tagSet = (idx, i) => {
+    const wasAlreadyPR = A.entries[idx].sets[i].pr
+    const setData = { ...A.entries[idx].sets[i] }
+    mutEntry(idx, e => {
+      const s = e.sets[i]
+      if (!s.type && !s.pr) {
+        s.type = 'drop'
+        if (!s.drops) s.drops = [{ w: s.w || 0, r: s.r || 0 }, { w: Math.max(0, (s.w || 0) - 5), r: s.r || 0 }]
+      } else if (s.type === 'drop') {
+        delete s.type; delete s.drops; s.pr = true
+      } else {
+        delete s.pr
+      }
+    })
+    // Emit signal when PR is newly marked (drop → PR transition)
+    if (!wasAlreadyPR && setData.type === 'drop') {
+      useUI.getState().signal('setPR', { weight: setData.w, reps: setData.r })
     }
-  })
+  }
   const dropField = (idx, i, di, field, v) => mutEntry(idx, e => {
     if (v == null) delete e.sets[i].drops[di][field]; else e.sets[i].drops[di][field] = v
   })
@@ -294,7 +302,7 @@ function ActiveWorkout() {
     const m = modeAt(idx)
     const cardioEntry = m === 'cardio'
     const isLastUnit = unitIdx >= units.length - 1
-    let askTop = false, exJustDone = false, workoutDone = false
+    let askTop = false, exJustDone = false, workoutDone = false, prTriggered = false
     mutEntry(idx, e => {
       e.sets[i].done = !e.sets[i].done
       if (e.sets[i].done) {
@@ -314,10 +322,52 @@ function ActiveWorkout() {
         if (e.sets.every(x => x.done)) { exJustDone = true; if (loaded && !e.asked) { e.asked = true; askTop = true } }
       }
     })
+
+    // Auto-PR Detection
+    update(s => {
+      const e = s.active.entries[idx]
+      const set = e.sets[i]
+      if (set.done) {
+        if (s.trackedPRExercises && s.trackedPRExercises.includes(e.id)) {
+          const w = set.w || 0
+          const r = set.r || 0
+          const cur = s.personalRecords[e.id]
+          if (w > 0 && (!cur || w > cur.w || (w === cur.w && r > cur.r))) {
+            set.pr = true
+            set._oldPr = cur ? { ...cur } : null
+            s.personalRecords[e.id] = { w, r, d: todayISO() }
+            if (!s.active.prs) s.active.prs = []
+            if (!s.active.prs.includes(e.id)) s.active.prs.push(e.id)
+            prTriggered = { weight: w, reps: r }
+          }
+        }
+      } else {
+        // Undo automatic PR if set is unchecked
+        if (set.pr && set._oldPr !== undefined) {
+           if (set._oldPr === null) delete s.personalRecords[e.id]
+           else s.personalRecords[e.id] = { ...set._oldPr }
+           delete set.pr
+           delete set._oldPr
+           if (s.active.prs) {
+              const hasOtherPR = e.sets.some(x => x.pr)
+              if (!hasOtherPR) s.active.prs = s.active.prs.filter(x => x !== e.id)
+           }
+        }
+      }
+    }, true)
+
+    if (prTriggered) {
+      useUI.getState().signal('setPR', prTriggered)
+    }
     // reps: topWeight first (it chains into the finish/continue prompt on the last unit).
     // cardio/timed or already-confirmed: go straight to the prompt.
     if (askTop) topWeightSheet(idx)
-    else if (workoutDone) workoutCompleteSheet()
+    else if (workoutDone) {
+      const S2 = useStore.getState().S
+      const streak = streakWeeks(S2)
+      useUI.getState().signal('workoutComplete', { streak, count: A.entries.length })
+      workoutCompleteSheet()
+    }
     else if (exJustDone && cardioEntry) useUI.getState().toast(t('Cardio logged'))
     else if (exJustDone && m === 'time') useUI.getState().toast(t('Hold logged'))
   }

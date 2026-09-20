@@ -14,6 +14,7 @@ import ErrorBoundary from './components/ErrorBoundary.jsx'
 import Modals from './components/Modals.jsx'
 import Toast from './components/Toast.jsx'
 import RestTimer from './components/RestTimer.jsx'
+import CelebrationSignal from './components/CelebrationSignal.jsx'
 import Login from './views/Login.jsx'
 import Home from './views/Home.jsx'
 import Plan from './views/Plan.jsx'
@@ -53,8 +54,8 @@ function Shell() {
   const authed = user || isGuest
   if (!ready && !authed) return (
     <div id="app">
-      <div style={{ paddingTop: '44vh', display: 'flex', justifyContent: 'center', fontSize: 34, color: 'var(--label-3)' }}>
-        <Icon name="dumbbell" />
+      <div style={{ paddingTop: '44vh', display: 'flex', justifyContent: 'center' }}>
+        <img src="/grit-isotipo.svg" alt="Grit" style={{ width: 60, height: 60 }} />
       </div>
     </div>
   )
@@ -83,6 +84,7 @@ function Shell() {
       </div>
       <TabBar onStart={startFlow} />
       <RestTimer />
+      <CelebrationSignal />
       <Modals />
       <Toast />
     </>

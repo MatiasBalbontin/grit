@@ -7,6 +7,7 @@ import { DEMO, REPO } from '../lib/demo.js'
 import { useState, useRef, useEffect } from 'react'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
+import LoginAuthSheet from '../components/LoginAuthSheet.jsx'
 
 function RegisterSheet({ close }) {
   const { setUser, pushState, pullState } = useStore()
@@ -49,8 +50,8 @@ export default function Login() {
     catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') useUI.getState().toast(e.message || t('Sign-in failed')) }
   }
   const head = <>
-    <div style={{ fontSize: 54, display: 'flex', justifyContent: 'center', color: 'var(--acc)' }}><Icon name="dumbbell" /></div>
-    <h1 style={{ fontSize: 34, fontWeight: 700, letterSpacing: '-.028em', margin: '10px 0 4px' }}>openGym</h1>
+    <img src="/grit-isotipo.svg" alt="Grit" style={{ width: 80, height: 80, margin: '0 auto 16px', display: 'block' }} />
+    <h1 style={{ fontSize: 34, fontWeight: 700, letterSpacing: '-.028em', margin: '10px 0 4px' }}>Grit</h1>
   </>
   const wrap = { display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: '78vh', textAlign: 'center' }
 
@@ -72,15 +73,29 @@ export default function Login() {
   return (
     <div className="narrow" style={wrap}>
       {head}
-      <div className="muted" style={{ marginBottom: 34 }}>{t('Your workouts. Your weights. Your profile.')}</div>
+      <div className="muted" style={{ marginBottom: 34 }}>{t('Your strength. Your story.')}</div>
+
+      {/* Email + Password Auth */}
+      <Button variant="primary" icon="mail" onClick={() => useUI.getState().openSheet(close => <LoginAuthSheet close={close} isRegister={false} />)}>{t('Sign in with email')}</Button>
+      <div style={{ height: 10 }} />
+      <Button icon="plus" onClick={() => useUI.getState().openSheet(close => <LoginAuthSheet close={close} isRegister={true} />)}>{t('Create account')}</Button>
+      <div style={{ height: 16 }} />
+
+      {/* Passkey Auth (if available) */}
       {webauthnOK() ? <>
-        <Button variant="primary" icon="person" onClick={signIn}>{t('Sign in with passkey')}</Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '16px 0', opacity: 0.5 }}>
+          <div style={{ flex: 1, height: '1px', background: 'var(--sep)' }} />
+          <span className="dim small">{t('or')}</span>
+          <div style={{ flex: 1, height: '1px', background: 'var(--sep)' }} />
+        </div>
+        <Button variant="ghost" icon="person" onClick={signIn}>{t('Sign in with passkey')}</Button>
         <div style={{ height: 10 }} />
-        <Button icon="sparkles" onClick={() => useUI.getState().openSheet(close => <RegisterSheet close={close} />)}>{t('Create new profile')}</Button>
-        <div style={{ height: 10 }} />
-      </> : <div className="card small muted" style={{ textAlign: 'left' }}>{t("This browser doesn't support passkeys — you can still use openGym locally on this device.")}</div>}
+        <Button variant="ghost" icon="sparkles" onClick={() => useUI.getState().openSheet(close => <RegisterSheet close={close} />)}>{t('Create passkey')}</Button>
+      </> : null}
+
+      <div style={{ height: 16 }} />
       <Button variant="ghost" className="dim" onClick={() => setGuest(true)}>{t('Continue without account')}</Button>
-      <div className="dim small" style={{ marginTop: 26, lineHeight: 1.5 }}>{t('Passkeys use {0} — no passwords.', BIO)}<br />{t('Each profile keeps its own plan, workouts & body weight.')}</div>
+      <div className="dim small" style={{ marginTop: 26, lineHeight: 1.5 }}>{t('Secure, private, synced across devices.')}</div>
     </div>
   )
 }

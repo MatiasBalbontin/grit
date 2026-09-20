@@ -96,6 +96,10 @@ export function setLabel(id, s, cfg) {
   const mode = modeOf(c)
   if (mode === 'cardio') return `${s.min || 0} min @ ${fmtNum(s.speed || 0)} km/h`
   if (mode === 'time') return fmtSec(s.sec) + (s.w > 0 ? ` · ${fmtNum(s.w)}` : '')
+  // Drop set: render each sub-set joined with arrows.
+  if (s.type === 'drop' && Array.isArray(s.drops) && s.drops.length) {
+    return s.drops.map(d => `${fmtNum(d.w || 0)}×${d.r || 0}`).join(' → ')
+  }
   // Bodyweight reads as what you did — "12", or "+10 × 12" once there is a belt involved —
   // rather than "0×12", which says a set was performed with no weight and means nothing.
   // A per-side set needs no mark here: the number logged is the total, the same as every
@@ -117,6 +121,13 @@ export function defaultConfig(id, mode) {
   if (m === 'time') return { sets: 3, sec: 45, weight: 0, mode: 'time', ...bw }
   return { sets: 3, reps: 10, weight: 0, mode: 'reps', ...bw }
 }
+
+export function resolveSetWeight(s, cfg) {
+  return s.w != null ? s.w : (cfg.weight || 0)
+}
+export function resolveSetReps(s, cfg) {
+  return s.r != null ? s.r : (cfg.reps || 0)
+}
 // One-line summary of a planned exercise ("3 × 10 · 60 kg"), shared by the routine editor
 // and the plan export so a mode is described the same way everywhere.
 export function exLine(cfg, unit) {
@@ -128,6 +139,9 @@ export function exLine(cfg, unit) {
   if (mode === 'time') return `${n} × ${fmtSec(cfg.sec || 45)}${load}`
   // This is the line with room for it, so the split is spelled out: "3 × 16 · 8/side".
   const split = isPerSide(cfg) ? ' · ' + t('{0}/side', fmtNum(sideReps(cfg.reps))) : ''
+  // Per-set weights (easy mode): show them instead of a single load — "3 × 10 · 40/42.5/45 kg".
+  const series = Array.isArray(cfg.series) && cfg.series.length ? cfg.series : null
+  if (series) return `${series.length} × ${cfg.reps} · ${series.map(s => fmtNum(resolveSetWeight(s, cfg))).join('/')} ${unit}${split}`
   return `${n} × ${cfg.reps}${load}${split}`
 }
 
@@ -194,6 +208,16 @@ export function buildSets(S, cfg) {
     }
     return sets
   }
+  // Easy mode: per-set targets (issue: peso por serie). When present they are the plan, so they
+  // win over the history carry-over and the uniform weight — the user typed exactly these.
+  const series = Array.isArray(cfg.series) && cfg.series.length ? cfg.series : null
+  if (series) {
+    for (let i = 0; i < series.length; i++) {
+      const s = series[i]
+      sets.push({ w: resolveSetWeight(s, cfg), r: resolveSetReps(s, cfg), done: false })
+    }
+    return sets
+  }
   const conf = S.exWeights[cfg.id]
   for (let i = 0; i < n; i++) {
     const prev = prevAt(i)
@@ -207,7 +231,14 @@ export function workoutVolume(w) {
   let v = 0
   // No special case for unilateral work: a per-side set logs its total, so both sides are
   // already in the rep count that arrives here.
-  w.entries.forEach(e => e.sets.forEach(s => { if (s.done) v += (s.w || 0) * (s.r || 0) }))
+  w.entries.forEach(e => e.sets.forEach(s => {
+    if (!s.done) return
+    if (s.type === 'drop' && Array.isArray(s.drops)) {
+      s.drops.forEach(d => { v += (d.w || 0) * (d.r || 0) })
+    } else {
+      v += (s.w || 0) * (s.r || 0)
+    }
+  }))
   return v
 }
 export function setsDone(w) {
@@ -221,6 +252,21 @@ export function setsDoneActive(A) {
   return n
 }
 export const lastBW = S => (S.bodyweight.length ? S.bodyweight[S.bodyweight.length - 1] : null)
+
+// Days after which the pre-workout weigh-in is asked again. 'off' never asks.
+export const WEIGH_DAYS = { weekly: 7, monthly: 30 }
+
+// Should the pre-workout weigh-in be asked before starting? Returns { ask, weight }:
+// ask=false starts straight in, carrying the last known weight; 'off' or a cadence that hasn't
+// expired never asks. Pure read-back of the logged bodyweight — tested beside this file.
+export function weighDue(S, now = Date.now()) {
+  const cadence = S.weighCadence || 'weekly'
+  const last = lastBW(S)
+  const days = WEIGH_DAYS[cadence]
+  const fresh = last && days && (now - new Date(last.d + 'T12:00:00').getTime()) < days * 864e5
+  if (cadence === 'off' || fresh) return { ask: false, weight: last ? last.w : null }
+  return { ask: true, weight: null }
+}
 
 // Group consecutive items sharing a superset id (sg) into "units" of indices.
 // items may be routine exercises ({sg}) or active-workout entries ({sg}).
@@ -247,4 +293,36 @@ export function streakWeeks(S) {
     cur.setDate(cur.getDate() - 7)
   }
   return streak
+}
+
+// Returns how many days in the last `days` days had a planned routine and how many of those
+// were actually trained. Used by the ConsistencyCard on Home.
+export function consistencyScore(S, days = 28) {
+  const now = new Date()
+  let planned = 0
+  let trained = 0
+  const trainedDates = new Set(S.workouts.map(w => w.d))
+  for (let i = 0; i < days; i++) {
+    const d = new Date(now)
+    d.setDate(d.getDate() - i)
+    const iso = isoOf(d)
+    const hasRoutine = !!effectiveRoutineId(S, iso)
+    if (hasRoutine) {
+      planned++
+      if (trainedDates.has(iso)) trained++
+    }
+  }
+  const pct = planned > 0 ? Math.round((trained / planned) * 100) : 0
+  return { trained, planned, pct }
+}
+
+// Count drop sets logged in workouts from the last 7 days.
+export function weeklyDropSets(S) {
+  const cutoff = Date.now() - 7 * 864e5
+  let count = 0
+  S.workouts.forEach(w => {
+    if (new Date(w.d + 'T12:00:00').getTime() < cutoff) return
+    w.entries.forEach(e => e.sets.forEach(s => { if (s.done && s.type === 'drop') count++ }))
+  })
+  return count
 }

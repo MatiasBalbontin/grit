@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   readSession, sessionsFor, stallCount, nextPrescription, applyPrescription,
-  policyFor, defaultIncrement, POLICIES_FOR, DELOAD_AFTER, MAX_BW_SETS
+  policyFor, defaultIncrement, POLICIES_FOR, DELOAD_AFTER, MAX_BW_SETS, swapEntry
 } from './progression.js'
 import { EXDB } from './exercises.js'
 
@@ -448,5 +448,30 @@ describe('applyPrescription', () => {
 
   it('never shrinks a session that has already logged sets', () => {
     expect(applyPrescription(sets, { kind: 'up', weight: 60, sets: 1 })).toHaveLength(sets.length)
+  })
+})
+
+/* ---------- swapEntry: change an exercise in place mid-session (Fase 4) ---------- */
+
+describe('swapEntry', () => {
+  const S = { unit: 'kg', workouts: [], exWeights: {} }
+  const routine = { id: 'r', ex: [] }
+
+  it('builds an entry for the new exercise, keeping the slot superset id', () => {
+    const entry = swapEntry(S, { id: LIFT }, { sets: 3, reps: 5, weight: 60 }, routine, 2)
+    expect(entry.id).toBe(LIFT)
+    expect(entry.sg).toBe(2)
+    expect(entry.target).toEqual({ sets: 3, reps: 5, weight: 60 })
+    expect(entry.sets).toHaveLength(3)
+  })
+
+  it('carries per-set custom weights and turns progression off (never overrides manual sets)', () => {
+    const cfg = { sets: 2, reps: 10, weight: 40, series: [{ w: 50, r: 8 }, { w: 55, r: 6 }] }
+    const entry = swapEntry(S, { id: LIFT }, cfg, routine, undefined)
+    expect(entry.plan.policy).toBe('off')
+    expect(entry.sets).toEqual([
+      { w: 50, r: 8, done: false },
+      { w: 55, r: 6, done: false },
+    ])
   })
 })

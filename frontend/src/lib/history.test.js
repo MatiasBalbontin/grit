@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, exLine, workoutVolume, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep } from './history.js'
+import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, exLine, workoutVolume, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, weighDue } from './history.js'
 import { EXDB } from './exercises.js'
 
 // Real ids out of the shipped catalogue, so the body-part fallback is exercised for real.
@@ -342,6 +342,18 @@ describe('buildSets', () => {
       .toEqual([{ w: 50, r: 8, done: false }, { w: 50, r: 8, done: false }, { w: 50, r: 8, done: false }])
   })
 
+  it('uses per-set weights when the plan carries a series (easy mode)', () => {
+    // history that would otherwise carry forward — the series must win over it
+    const S = { exWeights: { [LIFT]: { w: 99 } }, workouts: [{ d: '2026-01-01', entries: [{ id: LIFT, sets: [{ w: 99, r: 12, done: true }] }] }] }
+    expect(buildSets(S, { id: LIFT, sets: 3, reps: 10, weight: 40, series: [{ w: 40, r: 10 }, { w: 42.5, r: 8 }, { w: 45, r: 6 }] }))
+      .toEqual([{ w: 40, r: 10, done: false }, { w: 42.5, r: 8, done: false }, { w: 45, r: 6, done: false }])
+  })
+
+  it('falls back to the uniform weight/reps for a series row missing them', () => {
+    expect(buildSets(emptyS, { id: LIFT, sets: 2, reps: 10, weight: 50, series: [{ w: 55 }, {}] }))
+      .toEqual([{ w: 55, r: 10, done: false }, { w: 50, r: 10, done: false }])
+  })
+
   it('builds timed sets, carrying the planned duration and load', () => {
     expect(buildSets(emptyS, { id: LIFT, mode: 'time', sets: 2, sec: 60, weight: 20 }))
       .toEqual([{ sec: 60, w: 20, done: false }, { sec: 60, w: 20, done: false }])
@@ -394,5 +406,36 @@ describe('workoutVolume', () => {
   it('leaves an unloaded bodyweight set at zero volume rather than inventing a number', () => {
     const w = { entries: [{ id: BW, target: { bodyweight: true }, sets: [{ w: 0, r: 20, done: true }] }] }
     expect(workoutVolume(w)).toBe(0)
+  })
+})
+
+/* ---------- pre-workout weigh-in cadence (Fase 0) ---------- */
+
+describe('weighDue', () => {
+  const NOW = new Date('2026-01-20T12:00:00').getTime()
+  const bwAt = iso => ({ bodyweight: [{ d: iso, w: 80 }] })
+
+  it('asks when there is no logged weight yet', () => {
+    expect(weighDue({ bodyweight: [], weighCadence: 'weekly' }, NOW)).toEqual({ ask: true, weight: null })
+  })
+
+  it("never asks when cadence is off, carrying the last weight", () => {
+    expect(weighDue({ ...bwAt('2020-01-01'), weighCadence: 'off' }, NOW)).toEqual({ ask: false, weight: 80 })
+  })
+
+  it('weekly: does not ask when the last weigh-in is 3 days old', () => {
+    expect(weighDue({ ...bwAt('2026-01-17'), weighCadence: 'weekly' }, NOW)).toEqual({ ask: false, weight: 80 })
+  })
+
+  it('weekly: asks when the last weigh-in is 10 days old', () => {
+    expect(weighDue({ ...bwAt('2026-01-10'), weighCadence: 'weekly' }, NOW)).toEqual({ ask: true, weight: null })
+  })
+
+  it('monthly: does not ask when the last weigh-in is 10 days old', () => {
+    expect(weighDue({ ...bwAt('2026-01-10'), weighCadence: 'monthly' }, NOW)).toEqual({ ask: false, weight: 80 })
+  })
+
+  it('defaults to weekly cadence when unset', () => {
+    expect(weighDue({ ...bwAt('2026-01-10') }, NOW)).toEqual({ ask: true, weight: null })
   })
 })

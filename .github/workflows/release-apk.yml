@@ -1,0 +1,58 @@
+name: Android Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Needed to create a release
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Web App
+        run: npm run build:mobile
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 --decode > android/app/release.jks
+
+      - name: Build Release APK
+        run: |
+          cd android
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=release.jks \
+            -Pandroid.injected.signing.store.password=${{ secrets.STORE_PASSWORD }} \
+            -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
+            -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: android/app/build/outputs/apk/release/app-release.apk
+          name: Grit ${{ github.ref_name }}
+          body: "Automated release of Grit ${{ github.ref_name }}"
+          draft: false
+          prerelease: false

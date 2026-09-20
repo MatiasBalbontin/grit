@@ -1,15 +1,15 @@
 import { useNavigate, useParams } from 'react-router-dom'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useStore } from '../store/useStore.js'
 import { exOr } from '../lib/exercises.js'
-import { uid } from '../lib/format.js'
+import { uid, fmtNum } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
-import { supersetUnits, cleanupSg, exLine } from '../lib/history.js'
+import { supersetUnits, cleanupSg, exLine, modeOf, isPerSide, resolveSetWeight, resolveSetReps } from '../lib/history.js'
 import { Thumb } from '../components/Media.jsx'
 import { glyphPicker, exercisePicker, exConfigSheet, confirmSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { glyphOf } from '../lib/glyphs.js'
-import { Button, SelectRow } from '../components/ui.jsx'
+import { Button, SelectRow, Stepper, Switch, Row } from '../components/ui.jsx'
 import { POLICIES_FOR, POLICY_NAME, POLICY_DESC } from '../lib/progression.js'
 import BodyMap from '../components/BodyMap.jsx'
 import { loadOfRoutine, rankOf, MUSCLE_NAME } from '../lib/muscles.js'
@@ -23,6 +23,7 @@ export default function RoutineEdit() {
   useEffect(() => { if (!r) nav('/plan') }, [!!r])
   if (!r) return null
 
+  const [open, setOpen] = useState(-1)
   const edit = fn => update(s => { fn(s.routines.find(x => x.id === id).ex) })
   const move = (i, dir) => edit(ex => { const j = i + dir; if (j < 0 || j >= ex.length) return;[ex[i], ex[j]] = [ex[j], ex[i]]; cleanupSg(ex) })
   const toggleLink = i => edit(ex => {
@@ -61,11 +62,16 @@ export default function RoutineEdit() {
       // could neither see nor delete, but that still turned up in the workout.
       const ex = exOr(e.id)
       const linkedPrev = i > 0 && e.sg && r.ex[i - 1].sg === e.sg
+      // Easy mode expands a simple inline editor for reps exercises; cardio/timed still use the
+      // full sheet (their fields don't fit the simple row).
+      const easy = S.easyMode && modeOf({ ...e, id: e.id }) === 'reps'
+      const onItem = () => {
+        if (easy) { setOpen(open === i ? -1 : i); return }
+        exConfigSheet(ex, e, cfg => edit(x => { x[i] = { id: x[i].id, sg: x[i].sg, ...cfg } }), () => edit(x => { x.splice(i, 1); cleanupSg(x) }), r)
+      }
       return <div key={i}>
         {unitFirst.has(i) && <div className="ss-label"><Icon name="link" />{t('Superset')}</div>}
-        <div className={'item' + (inSS.has(i) ? ' in-ss' : '')} onClick={() => {
-          exConfigSheet(ex, e, cfg => edit(x => { x[i] = { id: x[i].id, sg: x[i].sg, ...cfg } }), () => edit(x => { x.splice(i, 1); cleanupSg(x) }), r)
-        }}>
+        <div className={'item' + (inSS.has(i) ? ' in-ss' : '')} onClick={onItem}>
           <Thumb ex={ex} />
           <div className="grow"><div className="tt capitalize">{ex.n}</div><div className="ss">{exLine(e, S.unit)}</div></div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 'none', alignItems: 'center' }}>
@@ -74,8 +80,11 @@ export default function RoutineEdit() {
               <button className="iconbtn" aria-label="Move up" style={{ width: 28, height: 24, borderRadius: 7, fontSize: 12 }} onClick={ev => { ev.stopPropagation(); move(i, -1) }}><Icon name="chevronUp" /></button>
               <button className="iconbtn" aria-label="Move down" style={{ width: 28, height: 24, borderRadius: 7, fontSize: 12 }} onClick={ev => { ev.stopPropagation(); move(i, 1) }}><Icon name="chevronDown" /></button>
             </div>
+            {easy && <Icon name={open === i ? 'chevronUp' : 'chevronDown'} className="chev" />}
           </div>
         </div>
+        {easy && open === i && <EasyExRow e={e} i={i} unit={S.unit} edit={edit}
+          onRemove={() => { edit(x => { x.splice(i, 1); cleanupSg(x) }); setOpen(-1) }} />}
       </div>
     })}</div> : <div className="empty"><div className="ico"><Icon name="dumbbell" /></div>{t('No exercises yet — add your first one.')}</div>}
 
@@ -107,5 +116,62 @@ export default function RoutineEdit() {
         nav('/plan')
       }
     })}>{t('Delete routine')}</Button>
+  </div>
+}
+
+/* ---------- easy-mode inline editor: sets, reps, unilateral, weight, optional per-set weights ---------- */
+function EasyExRow({ e, i, unit, edit, onRemove }) {
+  const perSide = isPerSide(e)
+  const hasSeries = Array.isArray(e.series) && e.series.length > 0
+  const sets = Math.max(1, e.sets || 1)
+  const patch = fn => edit(ex => fn(ex[i]))
+
+  const setSets = v => patch(c => {
+    const n = Math.max(1, Math.round(v) || 1)
+    c.sets = n
+    // Keep per-set rows in step with the set count, seeding new rows from the last one.
+    if (Array.isArray(c.series)) {
+      const seed = c.series[c.series.length - 1] || { w: c.weight || 0, r: c.reps }
+      while (c.series.length < n) c.series.push({ ...seed })
+      c.series.length = n
+    }
+  })
+  const setReps = v => patch(c => { let n = Math.max(1, Math.round(v) || 1); c.reps = perSide ? Math.ceil(n / 2) * 2 : n })
+  const setWeight = v => patch(c => { c.weight = Math.max(0, v || 0) })
+  // Unilateral rounds the total up to an even number so each side gets a whole rep.
+  const toggleSide = on => patch(c => { if (on) { c.side = true; c.reps = Math.ceil((c.reps || 0) / 2) * 2 } else delete c.side })
+  const togglePerSeries = on => patch(c => {
+    if (on) c.series = Array.from({ length: Math.max(1, c.sets || 1) }, () => ({ w: c.weight || 0, r: c.reps }))
+    else delete c.series
+  })
+  const setSeriesField = (k, field, v) => patch(c => {
+    if (!Array.isArray(c.series)) return
+    const clean = field === 'w' ? Math.max(0, v || 0) : Math.max(1, Math.round(v) || 1)
+    c.series[k] = { ...c.series[k], [field]: clean }
+  })
+
+  return <div className="card" style={{ marginTop: 6, marginBottom: 8 }}>
+    <div className="row cfgrow" style={{ marginBottom: 12 }}>
+      <Stepper label={t('Sets')} value={sets} step={1} decimal={false} onChange={setSets} />
+      <Stepper label={t('Reps')} value={e.reps || 0} step={perSide ? 2 : 1} decimal={false} onChange={setReps} />
+      {!hasSeries && <Stepper label={t('Weight ({0})', unit)} value={e.weight || 0} step={2.5} onChange={setWeight} />}
+    </div>
+    <Row icon="shuffle" iconTint="var(--blue)" title={t('Unilateral (per side)')}
+      subtitle={perSide ? t('You still log the total: {0} is {1} per side.', e.reps || 0, fmtNum((e.reps || 0) / 2)) : null}>
+      <Switch checked={perSide} onChange={toggleSide} />
+    </Row>
+    <Row icon="scale" iconTint="var(--teal)" title={t('Weight per set')}
+      subtitle={t('A different weight for each set instead of one for all.')}>
+      <Switch checked={hasSeries} onChange={togglePerSeries} />
+    </Row>
+    {hasSeries && <div style={{ marginTop: 10 }}>
+      {e.series.map((s, k) => <div key={k} className="row cfgrow" style={{ marginBottom: 6, alignItems: 'flex-end' }}>
+        <span className="small dim" style={{ minWidth: 52, paddingBottom: 10 }}>{t('Set {0}', k + 1)}</span>
+        <Stepper label={t('Weight ({0})', unit)} value={resolveSetWeight(s, e)} step={2.5} onChange={v => setSeriesField(k, 'w', v)} />
+        <Stepper label={t('Reps')} value={resolveSetReps(s, e)} step={perSide ? 2 : 1} decimal={false} onChange={v => setSeriesField(k, 'r', v)} />
+      </div>)}
+    </div>}
+    <div style={{ height: 10 }} />
+    <Button size="sm" variant="danger" icon="trash" onClick={onRemove}>{t('Remove from routine')}</Button>
   </div>
 }

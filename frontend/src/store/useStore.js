@@ -15,7 +15,19 @@ export const DEF = {
   // that a profile which never chose (loaded state is overlaid on DEF, on every path: local,
   // server pull, backup import) still falls back to the `showRir` boolean this replaced and
   // keeps the column it had. See effortOf.
-  reminder: { on: false, time: '08:00', tz: null }, effort: null
+  reminder: { on: false, time: '08:00', tz: null }, effort: null,
+  // How often the required weigh-in is asked for before starting a workout: 'off' never,
+  // 'weekly' at most once a week, 'monthly' at most once a month. Body weight is a slow signal —
+  // pesarse antes de cada sesión es ruido, no progreso. Manual logging (Home/Stats) is unaffected.
+  weighCadence: 'weekly',
+  // Easy mode: the routine editor expands an exercise inline (sets, reps, unilateral, weight, and
+  // optional per-set weights) instead of opening the full config sheet. Off = original sheet.
+  easyMode: false,
+  // Personal Records: best weight × reps logged for a given exercise, keyed by exercise id.
+  // Populated automatically when a set is tagged pr:true during a workout, and editable manually.
+  personalRecords: {},
+  // Which exercises the user wants displayed in the PR widget on Home, as an ordered array of ids.
+  trackedPRExercises: []
 }
 const clone = o => JSON.parse(JSON.stringify(o))
 
