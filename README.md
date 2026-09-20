@@ -4,11 +4,9 @@
 
 <br>
 
-**A self-hosted gym & body-weight tracker you actually own.**
+**Un rastreador de gimnasio y peso corporal que tú controlas y posees realmente.**
 
-Plan your week, run guided workouts, track every set and your body weight over time —
-on your phone, synced across devices, behind your own passkey login.
-No account on someone else's server, no subscription, no ads. Just `docker compose up`.
+Planifica tu semana, realiza entrenamientos guiados, registra cada serie y tu peso corporal a lo largo del tiempo — en tu teléfono, sincronizado entre dispositivos y protegido por tu propio inicio de sesión con *passkey*. Sin cuentas en servidores de terceros, sin suscripciones, sin anuncios. Simplemente ejecuta `docker compose up`.
 
 <br>
 
@@ -25,37 +23,34 @@ No account on someone else's server, no subscription, no ads. Just `docker compo
 
 </div>
 
-> **Note:** Grit is a modified fork of the excellent [openGym](https://github.com/DuarteSantos8/openGym) project created by Duarte Santos. It includes a complete visual rebranding, native Android builds, and a dedicated automated Personal Records (PR) module.
+> **Nota:** Grit es un *fork* modificado del excelente proyecto [openGym](https://github.com/DuarteSantos8/openGym) creado por Duarte Santos. Incluye un rediseño visual completo (rebranding), compilaciones nativas para Android y un módulo automatizado dedicado a los Récords Personales (PRs).
 
-## Why
+## Por qué
 
-Most workout apps lock your data behind a login on their servers, nag you to upgrade, or
-disappear when the startup does. Grit is the opposite: **it runs on your box, your data
-stays in a folder you control, and it's yours to fork.** It still feels modern — installable
-as a home-screen app, passkey sign-in, offline support, sync across your phone and laptop.
+La mayoría de las aplicaciones de entrenamiento encierran tus datos detrás de un inicio de sesión en sus servidores, te molestan para que pagues por mejoras, o desaparecen cuando la empresa quiebra. Grit es todo lo contrario: **se ejecuta en tu servidor, tus datos permanecen en una carpeta que tú controlas, y eres libre de crear tu propia versión (fork).** Aún así, se siente moderna: se puede instalar como una aplicación de pantalla de inicio (PWA), permite inicio de sesión con *passkey*, soporta uso sin conexión y sincroniza entre tu teléfono y computadora.
 
-## Features
+## Características principales
 
-- 🏆 **Smart Personal Records (PRs)** — specialized module to manually or automatically track your PRs based on volume and sets.
-- ⚖️ **Body-weight tracking** — interactive chart with a goal line you set, gains/losses colored by whether they move toward it
-- 🏋️ **Weekly plan** — a routine per weekday, over a library of **1,324 exercises** (searchable, with animated demos)
-- 🗓️ **Reschedule any day** — sick, missed a session, or fewer gym days this week? Move a workout to another day without touching your weekly plan
-- ▶️ **Guided workouts** — it knows what day it is and starts today's session; asks your body weight first, pre-fills your weights from last time, rest timer, PR detection, per-exercise weight tracking
-- ☀️ **The screen stays awake while you train** — no unlocking the phone and finding your place again between every set. On for as long as a workout is running, released the moment you finish it, and switchable off in Settings
-- 🔗 **Supersets** — build them, and log them back-to-back with a rest only after the pair
-- ⏱️ **Timed exercises** — planks, hangs, wall sits and loaded carries are logged by time, not reps, with a work timer that counts the set itself (separate from the rest timer) and logs the time you actually held. They can carry weight too
-- 📈 **Progression that follows a rule** — pick one per routine, override it per exercise: linear, **Greyskull LP** (AMRAP top set, double jumps, 10 % resets), double progression through a rep range, or adding time. Your weights are already right when the session opens, and every target says *why* it's that number. Missed reps never advance the load, stalls trigger a deload, and bodyweight exercises progress in reps instead
-- 💪 **Estimated 1RM** — per exercise, from your best eligible set (it names which one), with its own progress curve and a calculator for sets you haven't done. Won't guess above 12 reps
-- 🎯 **Effort per set, in your scale** — an optional third column rating how hard a set was, as **RIR** (reps left in the tank) or **RPE** (the same judgement on a 10-point scale). Off by default; each set keeps the scale it was logged with, and nothing else reads the value — your progression and 1RM are unaffected
-- ↔️ **Reps per side** — for lunges, single-arm rows and the rest. You log the total, the app shows the split ("8 per side"), and the target steps in twos so it never lands on a number one side can't have
-- 🏃 **Cardio** — log time + speed, not just weight × reps
-- 📥 **Bring your history with you** — import from **FitNotes**, **Strong** and **Hevy**, or body weight straight out of an **Apple Health** export.
-- 📦 **Yours to keep** — one-tap JSON export/import, guest mode, **no telemetry**
-- 📱 **Standalone Android app** — the whole tracker as a sideloadable APK: no account, no server, data on the phone, native workout reminders.
+- 🏆 **Récords Personales Inteligentes (PRs)** — módulo especializado para rastrear manual o automáticamente tus PRs según el volumen y las series.
+- ⚖️ **Seguimiento de peso corporal** — gráfico interactivo con una línea de meta que tú defines; las ganancias/pérdidas cambian de color según te acerques a tu objetivo.
+- 🏋️ **Plan semanal** — una rutina por cada día de la semana, utilizando una biblioteca de **1.324 ejercicios** (con búsqueda avanzada y demostraciones animadas).
+- 🗓️ **Reprograma cualquier día** — ¿Te enfermaste, perdiste una sesión o fuiste menos días al gimnasio esta semana? Mueve un entrenamiento a otro día sin alterar tu plan semanal.
+- ▶️ **Entrenamientos guiados** — la app sabe qué día es e inicia la sesión de hoy; primero te pregunta tu peso corporal, autocompleta los pesos de la última vez, incluye temporizador de descanso, detección automática de PRs y seguimiento de peso por ejercicio.
+- ☀️ **La pantalla no se apaga mientras entrenas** — se acabaron los problemas de desbloquear el teléfono y buscar dónde estabas después de cada serie. Se mantiene encendida mientras el entrenamiento está activo y se libera en el momento en que terminas (opción desactivable en los Ajustes).
+- 🔗 **Superseries** — créalas y regístralas de forma consecutiva con un descanso solo al finalizar el par.
+- ⏱️ **Ejercicios por tiempo** — las planchas, dominadas isométricas, sentadillas en pared y caminata de granjero se registran por tiempo, no por repeticiones. Cuenta con un temporizador de trabajo que mide la serie en sí (independiente del temporizador de descanso) y registra el tiempo real que aguantaste. También pueden llevar peso extra.
+- 📈 **Progresión estructurada** — elige una regla por rutina, o anúlala por ejercicio: progresión lineal, **Greyskull LP** (última serie AMRAP, saltos dobles de peso, reinicios del 10%), progresión doble por rango de repeticiones o aumento de tiempo. Los pesos ya están configurados correctamente cuando abres la sesión, y cada objetivo explica *por qué* es ese número. Fallar repeticiones nunca aumenta la carga, estancarse provoca una semana de descarga (deload), y los ejercicios de peso corporal progresan sumando repeticiones.
+- 💪 **1RM Estimado** — cálculo automático por ejercicio desde tu mejor serie elegible (te muestra cuál usó), con su propia curva de progreso y una calculadora para series que aún no has hecho. No hace estimaciones basadas en series de más de 12 repeticiones.
+- 🎯 **Esfuerzo por serie (RIR/RPE)** — una tercera columna opcional que califica cuán difícil fue una serie mediante **RIR** (repeticiones en reserva) o **RPE** (escala de esfuerzo del 1 al 10). Apagado por defecto; cada serie guarda la escala con la que se registró, y nada más lee este valor: tu progresión y cálculo de 1RM no se ven afectados.
+- ↔️ **Repeticiones por lado** — para estocadas (lunges), remo a un brazo, etc. Tú registras el total, la aplicación muestra la división ("8 por lado"), y el objetivo siempre avanza de dos en dos para evitar números impares imposibles.
+- 🏃 **Cardio** — registra tiempo + velocidad, no solo peso × repeticiones.
+- 📥 **Trae tu historial contigo** — importa tus entrenamientos desde **FitNotes**, **Strong** o **Hevy**, o tu historial de peso corporal directamente desde una exportación de **Apple Health**.
+- 📦 **Tus datos son tuyos** — exportación/importación en JSON con un solo toque, modo invitado, y **cero telemetría (sin rastreo)**.
+- 📱 **Aplicación Android Nativa** — el rastreador completo como un archivo APK instalable: sin cuenta, sin servidor, los datos se guardan solo en el teléfono e incluye recordatorios de entrenamiento nativos.
 
-## Quick start (self-host)
+## Inicio rápido (Auto-alojado / Self-host)
 
-You need [Docker](https://docs.docker.com/get-docker/) with Compose.
+Necesitas tener [Docker](https://docs.docker.com/get-docker/) con Compose instalado.
 
 ```bash
 git clone https://github.com/MatiasBalbontin/grit
@@ -64,61 +59,52 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Open **http://localhost:8080**, tap **Create profile**, and you're in. First launch downloads
-the exercise media (~140 MB) once. 
+Abre **http://localhost:8080**, pulsa en **Crear perfil (Create profile)** y ya estás dentro. El primer inicio descargará la base de datos de los medios visuales de los ejercicios (~140 MB) una sola vez.
 
-> Want it reachable from your phone over the internet with passkeys? You'll need an HTTPS
-> domain — a two-line change in `.env`. See **[docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)**.
+> ¿Quieres que sea accesible desde tu teléfono a través de Internet utilizando *passkeys*? Necesitarás un dominio HTTPS — es un cambio de dos líneas en el archivo `.env`. Revisa **[docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)**.
 
-## Mobile app (no server at all)
+## Aplicación móvil (Sin servidor)
 
-The same codebase also builds a **standalone mobile app** (Capacitor): no account, no sync,
-no backend — everything stays on the phone, with native workout-day reminders and share-sheet
-backups. 
+El mismo código base genera una **aplicación móvil independiente** (mediante Capacitor): sin necesidad de cuenta, sin sincronización, sin backend — todo permanece en el teléfono. Cuenta con notificaciones nativas recordándote entrenar y opción de hacer copias de seguridad (backups) para compartir.
 
-- **Android:** Check the [GitHub Releases](https://github.com/MatiasBalbontin/grit/releases) to download the pre-compiled APK and sideload it.
-- **iPhone:** Apple doesn't allow installing apps outside the App Store, so there is no iOS download. Self-host and add it to your home screen from Safari (it's a full PWA).
+- **Android:** Ve a la sección [GitHub Releases](https://github.com/MatiasBalbontin/grit/releases) para descargar el archivo APK pre-compilado e instálalo (sideload).
+- **iPhone:** Apple no permite instalar aplicaciones fuera de la App Store, por lo que no hay descarga de iOS. Puedes auto-alojar el proyecto (self-host) y agregarlo a tu pantalla de inicio desde Safari (funciona como una PWA completa).
 
-## How it works
+## ¿Cómo funciona?
 
 ```
-┌─────────────┐        ┌──────────────────────────────┐
-│  Your phone │──HTTPS─▶│  web  (nginx)                │
-│  / laptop   │        │   ├─ serves the built app    │
-└─────────────┘        │   └─ proxies /api ──────────┐│
-                       └──────────────────────────────┘│
-                                                        ▼
-                                        ┌──────────────────────────┐
-                                        │  api  (Node + WebAuthn)  │
-                                        │   └─ ./data (JSON files) │
-                                        └──────────────────────────┘
+┌──────────────┐       ┌──────────────────────────────┐
+│  Tu teléfono │─HTTPS─▶│  web  (nginx)               │
+│   / laptop   │       │   ├─ sirve la app frontend   │
+└──────────────┘       │   └─ redirige /api ─────────┐│
+                       └─────────────────────────────┘│
+                                                      ▼
+                                       ┌──────────────────────────┐
+                                       │  api (Node + WebAuthn)   │
+                                       │   └─ ./data (archivos JSON)
+                                       └──────────────────────────┘
 ```
 
-## Your data
+## Tus datos
 
-Lives in `./data` on your host: `db.json` (profiles + public passkeys), `state-<user>.json`
-(each user's plan, workouts, body weight, settings), and `secret` (the session-cookie key).
-**Back up `./data` and you've backed up everything.** Passkey private keys never touch the
-server — they stay in your phone's secure hardware / your password manager.
+Se guardan localmente en la carpeta `./data` en tu servidor: `db.json` (perfiles + passkeys públicos), `state-<usuario>.json` (el plan de cada usuario, entrenamientos, peso corporal, ajustes), y `secret` (la clave de la cookie de sesión). **Haz una copia de seguridad de la carpeta `./data` y habrás respaldado absolutamente todo.** Las claves privadas de los Passkeys nunca tocan el servidor — se mantienen de forma segura en el hardware de tu teléfono o en tu gestor de contraseñas.
 
-## Configuration
+## Configuración
 
-All via `.env` (see `.env.example`):
+Todo se gestiona mediante el archivo `.env` (mira el ejemplo `.env.example`):
 
-| Variable      | What it is                                           | Default                 |
+| Variable      | Descripción                                          | Por defecto             |
 |---------------|------------------------------------------------------|-------------------------|
-| `RP_ID`       | Hostname passkeys are bound to                       | `localhost`             |
-| `ORIGIN`      | Full URL the app is served from                      | `http://localhost:8080` |
-| `WEB_PORT`    | Host port for the web UI                             | `8080`                  |
-| `RP_NAME`     | Name shown in the passkey prompt                     | `Grit`                  |
-| `ADMIN_UIDS`  | User ids that get the admin dashboard (comma-separated) | *(none)*             |
-| `INVITE_ONLY` | Require an invite code to create a profile           | *(off)*                 |
+| `RP_ID`       | Hostname al que están atados los passkeys            | `localhost`             |
+| `ORIGIN`      | URL completa desde donde se sirve la app             | `http://localhost:8080` |
+| `WEB_PORT`    | Puerto de host para la interfaz web                  | `8080`                  |
+| `RP_NAME`     | Nombre mostrado en la solicitud de Passkey           | `Grit`                  |
+| `ADMIN_UIDS`  | IDs de usuarios con panel de administrador (separados por comas) | *(ninguno)*  |
+| `INVITE_ONLY` | Requiere un código de invitación para crear un perfil | *(apagado)*           |
 
 
-## License
+## Licencia
 
-[GNU AGPL v3.0](LICENSE) — free and open source. You can self-host, use, modify and share it;
-if you run a modified version as a network service, you must offer that version's source under
-the same license. Nobody can turn Grit into a closed, proprietary product.
+[GNU AGPL v3.0](LICENSE) — software libre y de código abierto. Puedes auto-alojarlo, usarlo, modificarlo y compartirlo; sin embargo, si ejecutas una versión modificada como un servicio de red, estás obligado a ofrecer el código fuente de tu versión bajo esta misma licencia. Nadie puede convertir a Grit en un producto cerrado y propietario.
 
-Exercise images/GIFs are fetched from the upstream dataset and keep their own terms — see [NOTICE.md](NOTICE.md) for full details on this fork and the AGPL inheritance.
+Las imágenes y GIFs de los ejercicios provienen de un dataset externo y mantienen sus propios términos — revisa [NOTICE.md](NOTICE.md) para conocer los detalles completos sobre este fork y la herencia de la licencia AGPL.
