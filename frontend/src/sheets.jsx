@@ -895,63 +895,222 @@ export const prManagerSheet = () => ui().openSheet(close => <PRManagerSheet clos
 function StartOptionsSheet({ routineId, close }) {
   const st = useStore(s => s.S)
   const todayRoutine = routineId ? st.routines.find(r => r.id === routineId) : null
-  const [pickingOther, setPickingOther] = useState(false)
   const others = st.routines.filter(r => r.id !== routineId)
 
   const launch = (rid, warmup = false) => { close(); beginWorkout(rid, null, warmup) }
 
-  if (pickingOther) return <>
-    <h3>{todayRoutine ? t('Pick another routine') : t('Start a routine')}</h3>
-    <div className="list">
-      {others.map(r => <div key={r.id} className="item" onClick={() => launch(r.id)}>
-        <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
-        <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
-        <span className="tag acc">{t('Start')}</span>
-      </div>)}
-    </div>
-  </>
+  const [messages, setMessages] = useState([
+    {
+      id: 1,
+      sender: 'bot',
+      text: t('Hello! Ready to crush it today? What are we doing?'),
+      options: [
+        ...(todayRoutine ? [{ id: 'today', icon: 'play', color: 'var(--acc)', label: t('Start plan routine') + ': ' + todayRoutine.name, action: () => launch(routineId) }] : []),
+        ...(todayRoutine ? [{ id: 'warmup', icon: 'timer', color: '#f59e0b', label: t('Start warm-up'), action: () => launch(routineId, true) }] : []),
+        ...(others.length > 0 ? [{ id: 'other', icon: 'shuffle', color: 'var(--fg)', label: todayRoutine ? t('Pick another routine') : t('Start a routine'), action: () => setStep('pick_other') }] : []),
+        { id: 'freestyle', icon: 'plus', color: 'var(--fg)', label: t('Add exercises on the fly'), action: () => launch(null) },
+        { id: 'retro', icon: 'clock', color: 'var(--fg)', label: t('Log a finished workout'), action: () => { close(); retroWorkoutFlow() } }
+      ]
+    }
+  ])
+  const [step, setStep] = useState('initial')
+  const bottomRef = useRef(null)
 
-  return <>
-    <h3>{t('Start workout')}</h3>
-    <div className="list">
-      {todayRoutine && <div className="item" onClick={() => launch(routineId)}>
-        <span className="lrow-i" style={{ color: 'var(--acc)' }}><Icon name="play" /></span>
-        <div className="grow"><div className="tt">{t('Start plan routine')}</div><div className="ss">{todayRoutine.name}</div></div>
-      </div>}
-      {todayRoutine && <div className="item" onClick={() => launch(routineId, true)}>
-        <span className="lrow-i" style={{ color: '#f59e0b' }}><Icon name="timer" /></span>
-        <div className="grow"><div className="tt">{t('Start warm-up')}</div><div className="ss">{t('Warm-up')}</div></div>
-      </div>}
-      {others.length > 0 && <div className="item" onClick={() => setPickingOther(true)}>
-        <span className="lrow-i"><Icon name="shuffle" /></span>
-        <div className="grow"><div className="tt">{todayRoutine ? t('Pick another routine') : t('Start a routine')}</div><div className="ss">{exCount(others.length)}</div></div>
-        <Icon name="chevronRight" className="chev" />
-      </div>}
-      <div className="item" onClick={() => launch(null)}>
-        <span className="lrow-i"><Icon name="plus" /></span>
-        <div className="grow"><div className="tt">{t('Add exercises on the fly')}</div><div className="ss">{t('Freestyle workout (pick as you go)')}</div></div>
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const pushMsg = (msg) => setMessages(prev => [...prev, { id: Date.now(), ...msg }])
+  const removeMsgOptions = (id) => setMessages(prev => prev.map(m => m.id === id ? { ...m, options: [] } : m))
+
+  const handleOption = (msgId, opt) => {
+    removeMsgOptions(msgId)
+    pushMsg({ sender: 'user', text: opt.label })
+    setTimeout(() => { opt.action() }, 400)
+  }
+
+  useEffect(() => {
+    if (step === 'pick_other') {
+      setTimeout(() => {
+        pushMsg({
+          sender: 'bot',
+          text: t('Alright, which one of these routines?'),
+          options: others.map(r => ({ id: r.id, icon: glyphOf(r.emoji), color: 'var(--acc)', label: r.name, action: () => launch(r.id) }))
+        })
+      }, 500)
+    }
+  }, [step, others])
+
+  const showTip = () => {
+    pushMsg({
+      sender: 'bot',
+      text: t('💡 Coach Tip: It\'s been a while since you trained Legs. Want me to prepare a quick leg routine for you to tweak?'),
+      options: [
+        { id: 'yes_tip', label: t('Yes, build it'), action: () => toast(t('Feature coming soon!')) },
+        { id: 'no_tip', label: t('No thanks'), action: () => pushMsg({ sender: 'bot', text: t('No problem. What else?') }) }
+      ]
+    })
+  }
+
+  return <div style={{ display: 'flex', flexDirection: 'column', height: '75vh', maxHeight: '750px', margin: '-16px -16px 0 -16px', background: 'var(--bg)', borderRadius: '16px 16px 0 0', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--surface-1)', position: 'sticky', top: 0, zIndex: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--acc)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--bg)' }}>
+          <Icon name="sparkles" />
+        </div>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 16 }}>{t('Coach')}</div>
+          <div style={{ fontSize: 12, color: 'var(--acc)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--acc)' }}></span>
+            Online
+          </div>
+        </div>
       </div>
-      <div className="item" onClick={() => { close(); retroWorkoutFlow() }}>
-        <span className="lrow-i"><Icon name="clock" /></span>
-        <div className="grow"><div className="tt">{t('Log a finished workout')}</div></div>
-      </div>
+      <button className="iconbtn" onClick={showTip} style={{ color: '#f59e0b', fontSize: 22 }} aria-label="Tip of the day">
+        <Icon name="bolt" />
+      </button>
     </div>
-  </>
+    
+    <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16, padding: '20px' }}>
+      {messages.map((msg) => (
+        <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.sender === 'user' ? 'flex-end' : 'flex-start' }}>
+          <div style={{
+            background: msg.sender === 'user' ? 'var(--acc)' : 'var(--surface-2)',
+            color: msg.sender === 'user' ? 'var(--bg)' : 'var(--fg)',
+            padding: '12px 16px',
+            borderRadius: msg.sender === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+            maxWidth: '85%',
+            lineHeight: 1.5,
+            fontSize: 15,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+          }}>
+            {msg.text}
+          </div>
+          {msg.options && msg.options.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16, width: '100%' }}>
+              {msg.options.map(opt => (
+                <button
+                  key={opt.id}
+                  onClick={() => handleOption(msg.id, opt)}
+                  className="tappable"
+                  style={{
+                    background: 'var(--surface-1)',
+                    border: '1px solid var(--border)',
+                    padding: '14px 16px',
+                    borderRadius: 14,
+                    textAlign: 'left',
+                    color: 'var(--fg)',
+                    fontSize: 15,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    {opt.icon && <Icon name={opt.icon} style={{ color: opt.color, fontSize: 18 }} />}
+                    <span style={{ fontWeight: 500 }}>{opt.label}</span>
+                  </div>
+                  <Icon name="chevronRight" style={{ fontSize: 14, opacity: 0.4 }} />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+      <div ref={bottomRef} />
+    </div>
+  </div>
 }
 function RetroWorkoutFlow({ close }) {
   const st = useStore(s => s.S)
-  const [exCount_, setExCount] = useState(3)
-  const [step, setStep] = useState(0) // 0 = count, 1..N = per-exercise
-  const [exercises, setExercises] = useState([]) // [{id, sets:[{w,r,pr,type,drops}]}]
+  const [exercises, setExercises] = useState([]) 
+  const [reviewMode, setReviewMode] = useState(false)
+  const [messages, setMessages] = useState([
+    {
+      id: 1,
+      sender: 'bot',
+      text: t('Got it. Let\'s log that workout. What was the first exercise you did?'),
+      options: [
+        { id: 'pick_first', icon: 'search', color: 'var(--acc)', label: t('Pick exercise'), action: () => pickEx() },
+      ]
+    }
+  ])
+  const bottomRef = useRef(null)
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, reviewMode, exercises])
+
+  const pushMsg = (msg) => setMessages(prev => [...prev, { id: Date.now(), ...msg }])
+  const removeMsgOptions = (id) => setMessages(prev => prev.map(m => m.id === id ? { ...m, options: [] } : m))
+
+  const handleOption = (msgId, opt) => {
+    removeMsgOptions(msgId)
+    pushMsg({ sender: 'user', text: opt.label })
+    setTimeout(() => { opt.action() }, 400)
+  }
+
+  const pickEx = () => {
+    exercisePicker(picked => {
+      const exInfo = EXIDX[picked.id]
+      pushMsg({ sender: 'user', text: exInfo.n })
+      setTimeout(() => {
+        pushMsg({ sender: 'bot', text: t('Awesome, {0}. How many sets did you do?', exInfo.n), options: [
+          { id: 'sets_1', label: '1 Set', action: () => enterSets(picked.id, 1) },
+          { id: 'sets_2', label: '2 Sets', action: () => enterSets(picked.id, 2) },
+          { id: 'sets_3', label: '3 Sets', action: () => enterSets(picked.id, 3) },
+          { id: 'sets_4', label: '4 Sets', action: () => enterSets(picked.id, 4) },
+        ]})
+      }, 500)
+    })
+  }
+
+  const enterSets = (exId, numSets) => {
+    setExercises(prev => [
+      ...prev,
+      { id: exId, sets: Array.from({ length: numSets }, () => ({ w: 0, r: 10, done: true })) }
+    ])
+    setTimeout(() => {
+      pushMsg({ sender: 'bot', text: t('Logged {0} sets of {1}. What did you do next?', numSets, EXIDX[exId].n), options: [
+        { id: 'pick_next', icon: 'search', color: 'var(--acc)', label: t('Add another exercise'), action: () => pickEx() },
+        { id: 'finish', icon: 'check', color: 'var(--green)', label: t('That was it (Review & Finish)'), action: () => goToReview() },
+      ]})
+    }, 500)
+  }
+
+  const goToReview = () => {
+    pushMsg({ sender: 'bot', text: t('Almost done! Please review your sets below. Feel free to tweak the weights and reps before saving.') })
+    setTimeout(() => { setReviewMode(true) }, 600)
+  }
+
+  const applySetField = (idx, si, field, val) => setExercises(prev => prev.map((e, i) => {
+    if (i !== idx) return e
+    const sets = e.sets.map((s, j) => j === si ? { ...s, [field]: val } : s)
+    return { ...e, sets }
+  }))
+
+  const setSetField = (idx, si, field, v) => {
+    let val = field === 'r' ? parseInt(v) || 0 : parseFloat(v) || 0;
+    if (field === 'r' && val > 99) val = 99; // Cap at 99
+    
+    if (field === 'r' && val === 99) {
+       const exName = EXIDX[exercises[idx].id].n
+       confirmSheet({
+         title: t('Are you sure?'),
+         message: t('Did you really do 99 reps of {0}? That\'s insane!', exName),
+         confirmText: t('Yes, I am a beast'),
+         onConfirm: () => applySetField(idx, si, field, val)
+       })
+       return;
+    }
+    applySetField(idx, si, field, val)
+  }
 
   const addSet = idx => setExercises(prev => prev.map((e, i) => i === idx
     ? { ...e, sets: [...e.sets, { w: e.sets[e.sets.length - 1]?.w || 0, r: e.sets[e.sets.length - 1]?.r || 0, done: true }] }
     : e))
-  const setSetField = (idx, si, field, v) => setExercises(prev => prev.map((e, i) => {
-    if (i !== idx) return e
-    const sets = e.sets.map((s, j) => j === si ? { ...s, [field]: v } : s)
-    return { ...e, sets }
-  }))
+
   const tagSet = (idx, si) => setExercises(prev => prev.map((e, i) => {
     if (i !== idx) return e
     const sets = e.sets.map((s, j) => {
@@ -964,6 +1123,11 @@ function RetroWorkoutFlow({ close }) {
   }))
 
   const save = () => {
+    if (exercises.length === 0) {
+      toast(t('No exercises logged'));
+      close();
+      return;
+    }
     const now = Date.now()
     const entries = exercises.map(e => ({ id: e.id, sets: e.sets, topW: null, target: { id: e.id, mode: 'reps', sets: e.sets.length, reps: e.sets[0]?.r || 0, weight: e.sets[0]?.w || 0 } }))
       .filter(e => e.sets.length)
@@ -989,66 +1153,135 @@ function RetroWorkoutFlow({ close }) {
     toast(t('Workout saved'))
   }
 
-  if (step === 0) return <>
-    <h3>{t('Log a finished workout')}</h3>
-    <div className="muted small" style={{ marginBottom: 16 }}>{t('How many exercises did you do?')}</div>
-    <div className="row" style={{ justifyContent: 'center', gap: 16, marginBottom: 24 }}>
-      <button className="bw-pm" onClick={() => setExCount(c => Math.max(1, c - 1))}><Icon name="minus" /></button>
-      <span style={{ fontSize: 32, fontWeight: 700, minWidth: 40, textAlign: 'center' }}>{exCount_}</span>
-      <button className="bw-pm" onClick={() => setExCount(c => Math.min(20, c + 1))}><Icon name="plus" /></button>
-    </div>
-    <Button variant="primary" onClick={() => {
-      setExercises(Array.from({ length: exCount_ }, () => ({ id: null, sets: [{ w: 0, r: 10, done: true }] })))
-      setStep(1)
-    }}>{t('Next')}</Button>
-  </>
+  const showTip = () => {
+    pushMsg({
+      sender: 'bot',
+      text: t('💡 Coach Tip: Consistency is key. Did you know tracking every set improves long-term gains by 30%?'),
+    })
+  }
 
-  const exIdx = step - 1
-  const ex = exercises[exIdx]
-  const exInfo = ex?.id ? (EXIDX[ex.id] || {}) : null
-
-  return <>
-    <h3>{t('Exercise {0} of {1}', step, exCount_)}</h3>
-    {!exInfo ? <Button icon="plus" onClick={() => exercisePicker(picked => setExercises(prev => prev.map((e, i) => i === exIdx ? { ...e, id: picked.id } : e)))}>{t('Pick exercise')}</Button>
-      : <div className="row between" style={{ marginBottom: 12 }}>
-          <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{exInfo.n}</span>
-          <button className="iconbtn" onClick={() => exercisePicker(picked => setExercises(prev => prev.map((e, i) => i === exIdx ? { ...e, id: picked.id } : e)))}><Icon name="shuffle" /></button>
-        </div>}
-    {exInfo && <>
-      <div className="card" style={{ marginBottom: 10 }}>
-        <div className="sethead"><span className="n-sp" /><span className="w-sp">{t('Weight ({0})', st.unit)}</span><span className="r-sp">{t('Reps')}</span><span className="ck-sp" /></div>
-        {ex.sets.map((s, si) => {
-          const isDrop = s.type === 'drop'
-          const tagLabel = isDrop ? 'D' : s.pr ? '★' : '·'
-          const tagStyle = isDrop ? { color: 'var(--acc)', fontWeight: 700 } : s.pr ? { color: '#f59e0b', fontWeight: 700 } : { opacity: 0.3 }
-          return <div key={si}>
-            <div className="setrow">
-              <div className="n">{si + 1}</div>
-              {!isDrop && <div className="stp w">
-                <button onClick={() => setSetField(exIdx, si, 'w', Math.max(0, Math.round(((s.w || 0) - 2.5) * 100) / 100))}><Icon name="minus" /></button>
-                <span className="val"><input type="number" value={s.w ?? ''} onChange={e => setSetField(exIdx, si, 'w', parseFloat(e.target.value) || 0)} style={{ width: 48, textAlign: 'center', background: 'transparent', border: 'none', color: 'inherit', fontSize: 'inherit' }} /></span>
-                <button onClick={() => setSetField(exIdx, si, 'w', Math.round(((s.w || 0) + 2.5) * 100) / 100)}><Icon name="plus" /></button>
-              </div>}
-              {!isDrop && <div className="stp r">
-                <button onClick={() => setSetField(exIdx, si, 'r', Math.max(0, (s.r || 0) - 1))}><Icon name="minus" /></button>
-                <span className="val"><input type="number" value={s.r ?? ''} onChange={e => setSetField(exIdx, si, 'r', parseInt(e.target.value) || 0)} style={{ width: 40, textAlign: 'center', background: 'transparent', border: 'none', color: 'inherit', fontSize: 'inherit' }} /></span>
-                <button onClick={() => setSetField(exIdx, si, 'r', (s.r || 0) + 1)}><Icon name="plus" /></button>
-              </div>}
-              {isDrop && <div style={{ flex: 1, fontSize: 12, color: 'var(--muted)', padding: '0 4px' }}>{(s.drops || []).map(d => `${d.w}×${d.r}`).join(' → ')}</div>}
-              <button className="iconbtn" style={{ ...tagStyle, fontSize: 14, minWidth: 24 }} onClick={() => tagSet(exIdx, si)}>{tagLabel}</button>
-            </div>
+  return <div style={{ display: 'flex', flexDirection: 'column', height: '80vh', maxHeight: '800px', margin: '-16px -16px 0 -16px', background: 'var(--bg)', borderRadius: '16px 16px 0 0', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--surface-1)', position: 'sticky', top: 0, zIndex: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--acc)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--bg)' }}>
+          <Icon name="sparkles" />
+        </div>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 16 }}>{t('Coach')}</div>
+          <div style={{ fontSize: 12, color: 'var(--acc)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--acc)' }}></span>
+            Online
           </div>
-        })}
-        <div style={{ height: 8 }} />
-        <Button size="sm" icon="plus" onClick={() => addSet(exIdx)}>{t('Add set')}</Button>
+        </div>
       </div>
-      <div className="row">
-        {step > 1 && <Button icon="chevronLeft" onClick={() => setStep(s => s - 1)}>{t('Prev')}</Button>}
-        {step < exCount_ && <Button trailingIcon="chevronRight" onClick={() => setStep(s => s + 1)}>{t('Next')}</Button>}
-        {step === exCount_ && <Button variant="primary" onClick={save}>{t('Done — save workout')}</Button>}
-      </div>
-    </>}
-  </>
+      <button className="iconbtn" onClick={showTip} style={{ color: '#f59e0b', fontSize: 22 }} aria-label="Tip of the day">
+        <Icon name="bolt" />
+      </button>
+    </div>
+    
+    <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16, padding: '20px' }}>
+      {messages.map((msg) => (
+        <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.sender === 'user' ? 'flex-end' : 'flex-start' }}>
+          <div style={{
+            background: msg.sender === 'user' ? 'var(--acc)' : 'var(--surface-2)',
+            color: msg.sender === 'user' ? 'var(--bg)' : 'var(--fg)',
+            padding: '12px 16px',
+            borderRadius: msg.sender === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+            maxWidth: '85%',
+            lineHeight: 1.5,
+            fontSize: 15,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+          }}>
+            {msg.text}
+          </div>
+          {msg.options && msg.options.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16, width: '100%' }}>
+              {msg.options.map(opt => (
+                <button
+                  key={opt.id}
+                  onClick={() => handleOption(msg.id, opt)}
+                  className="tappable"
+                  style={{
+                    background: 'var(--surface-1)',
+                    border: '1px solid var(--border)',
+                    padding: '14px 16px',
+                    borderRadius: 14,
+                    textAlign: 'left',
+                    color: 'var(--fg)',
+                    fontSize: 15,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    {opt.icon && <Icon name={opt.icon} style={{ color: opt.color, fontSize: 18 }} />}
+                    <span style={{ fontWeight: 500 }}>{opt.label}</span>
+                  </div>
+                  <Icon name="chevronRight" style={{ fontSize: 14, opacity: 0.4 }} />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+      
+      {reviewMode && exercises.map((ex, exIdx) => {
+        const exInfo = EXIDX[ex.id] || {}
+        return (
+          <div key={exIdx} className="card" style={{ marginBottom: 10, animation: 'fadein 0.3s' }}>
+            <div className="row between" style={{ marginBottom: 12 }}>
+              <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{exInfo.n}</span>
+              <button className="iconbtn" onClick={() => setExercises(prev => prev.filter((_, i) => i !== exIdx))} style={{ color: 'var(--red)' }}><Icon name="xmark" /></button>
+            </div>
+            <div className="sethead"><span className="n-sp" /><span className="w-sp">{t('Weight ({0})', st.unit)}</span><span className="r-sp">{t('Reps')}</span><span className="ck-sp" /></div>
+            {ex.sets.map((s, si) => {
+              const isDrop = s.type === 'drop'
+              const tagLabel = isDrop ? 'D' : s.pr ? '★' : '·'
+              const tagStyle = isDrop ? { color: 'var(--acc)', fontWeight: 700 } : s.pr ? { color: '#f59e0b', fontWeight: 700 } : { opacity: 0.3 }
+              return <div key={si}>
+                <div className="setrow">
+                  <div className="n">{si + 1}</div>
+                  {!isDrop && <div className="stp w">
+                    <button onClick={() => setSetField(exIdx, si, 'w', Math.max(0, Math.round(((s.w || 0) - 2.5) * 100) / 100))}><Icon name="minus" /></button>
+                    <span className="val"><input type="number" value={s.w ?? ''} onChange={e => setSetField(exIdx, si, 'w', parseFloat(e.target.value) || 0)} style={{ width: 48, textAlign: 'center', background: 'transparent', border: 'none', color: 'inherit', fontSize: 'inherit' }} /></span>
+                    <button onClick={() => setSetField(exIdx, si, 'w', Math.round(((s.w || 0) + 2.5) * 100) / 100)}><Icon name="plus" /></button>
+                  </div>}
+                  {!isDrop && <div className="stp r">
+                    <button onClick={() => setSetField(exIdx, si, 'r', Math.max(0, (s.r || 0) - 1))}><Icon name="minus" /></button>
+                    <span className="val"><input type="number" value={s.r ?? ''} onChange={e => setSetField(exIdx, si, 'r', e.target.value)} style={{ width: 40, textAlign: 'center', background: 'transparent', border: 'none', color: 'inherit', fontSize: 'inherit' }} /></span>
+                    <button onClick={() => setSetField(exIdx, si, 'r', (s.r || 0) + 1)}><Icon name="plus" /></button>
+                  </div>}
+                  {isDrop && <div style={{ flex: 1, fontSize: 12, color: 'var(--muted)', padding: '0 4px' }}>{(s.drops || []).map(d => `${d.w}×${d.r}`).join(' → ')}</div>}
+                  <button className="iconbtn" style={{ ...tagStyle, fontSize: 14, minWidth: 24 }} onClick={() => tagSet(exIdx, si)}>{tagLabel}</button>
+                </div>
+              </div>
+            })}
+            <div style={{ height: 8 }} />
+            <Button size="sm" icon="plus" onClick={() => addSet(exIdx)}>{t('Add set')}</Button>
+          </div>
+        )
+      })}
+      
+      {reviewMode && (
+        <div style={{ marginTop: 8, animation: 'fadein 0.3s' }}>
+          <Button variant="primary" icon="check" onClick={() => {
+            confirmSheet({
+              title: t('Save Workout'),
+              message: t('Are you sure everything looks right? No more edits needed?'),
+              confirmText: t('Yes, save it'),
+              onConfirm: () => save()
+            })
+          }}>{t('Done — Save workout')}</Button>
+        </div>
+      )}
+      
+      <div ref={bottomRef} />
+    </div>
+  </div>
 }
 function retroWorkoutFlow() {
   nav('/retro')
