@@ -84,7 +84,13 @@ export default function Home() {
 
   return <div className="narrow">
     <div className="hdr">
-      <div><h1>{user ? t('Hi {0}', user.name) : 'Grit'}</h1><div className="sub">{today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}</div></div>
+      <div className="row" style={{ gap: 12, alignItems: 'center' }}>
+        <img src="/grit-isotipo.svg" alt="Grit" style={{ height: 32, width: 32 }} />
+        <div>
+          <h1 style={{ marginBottom: -2 }}>{user ? t('Hi {0}', user.name) : 'Grit'}</h1>
+          <div className="sub">{today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+        </div>
+      </div>
       <button className="iconbtn" onClick={() => nav('/settings')} aria-label={t('Settings')}><Icon name="gear" /></button>
     </div>
 
