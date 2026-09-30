@@ -192,16 +192,36 @@ export default function Settings() {
     <input ref={importRef} type="file" accept=".csv,.xml,text/csv,text/xml" style={{ display: 'none' }}
       onChange={ev => { const f = ev.target.files[0]; if (f) importFromApp(f); ev.target.value = '' }} />
 
-    {/* Actualizaciones para la app nativa */}
-    {MOBILE && <Section title={t('Mobile')}>
-      <Row icon="download" iconTint="var(--green)" title={t('Check for updates')} onClick={async () => {
-        toast(t('Checking...'))
-        const res = await checkUpdate()
-        if (res.error) toast(res.error)
-        else if (!res.updateAvailable) toast(t('You are up to date!'))
-        else confirmSheet({ title: t('Update available: {0}', res.version), message: res.notes, confirmText: t('Download'), onConfirm: () => window.open(res.downloadUrl, '_system') })
+    {/* Descarga del APK y Actualizaciones */}
+    <Section title={t('App & Updates')}>
+      {!MOBILE && (
+        <Row icon="rocket" iconTint="var(--green)" title={t('Download Android App (APK)')} 
+          subtitle={t('Install the native Android app for the best experience.')} 
+          onClick={() => window.open('/openGym.apk', '_blank')} />
+      )}
+      <Row icon="download" iconTint="var(--blue)" title={t('Check for updates')} 
+        subtitle={typeof __COMMIT_HASH__ !== 'undefined' ? `Build: ${__COMMIT_HASH__}` : ''} 
+        onClick={async () => {
+          toast(t('Checking...'))
+          const res = await checkUpdate()
+          if (res.error) toast(res.error)
+          else if (!res.updateAvailable) toast(t('You are up to date!'))
+          else confirmSheet({ 
+            title: t('Update available: {0}', res.version), 
+            message: res.notes, 
+            confirmText: MOBILE ? t('Download APK') : t('Update Now'), 
+            onConfirm: () => {
+              if (MOBILE) window.open(res.downloadUrl, '_system')
+              else {
+                if ('serviceWorker' in navigator) {
+                  navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.update()))
+                }
+                window.location.reload(true)
+              }
+            }
+          })
       }} />
-    </Section>}
+    </Section>
 
     {/* "Add to Home screen" makes no sense inside the native app */}
     {!MOBILE && <Section title={t('Tip')}>
