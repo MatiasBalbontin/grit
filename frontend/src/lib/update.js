@@ -14,7 +14,7 @@ export async function checkUpdate() {
         updateAvailable: true, 
         version: latest, 
         notes: `Nuevo commit detectado: ${data.commit.message}`, 
-        downloadUrl: '/openGym.apk' 
+        downloadUrl: '/GRIT.apk' 
       }
     }
     return { updateAvailable: false }

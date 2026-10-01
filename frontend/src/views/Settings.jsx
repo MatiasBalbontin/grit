@@ -197,7 +197,7 @@ export default function Settings() {
       {!MOBILE && (
         <Row icon="rocket" iconTint="var(--green)" title={t('Download Android App (APK)')} 
           subtitle={t('Install the native Android app for the best experience.')} 
-          onClick={() => window.open('/openGym.apk', '_blank')} />
+          onClick={() => window.open('/GRIT.apk', '_blank')} />
       )}
       <Row icon="download" iconTint="var(--blue)" title={t('Check for updates')} 
         subtitle={typeof __COMMIT_HASH__ !== 'undefined' ? `Build: ${__COMMIT_HASH__}` : ''} 
