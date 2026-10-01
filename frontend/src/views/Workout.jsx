@@ -401,7 +401,7 @@ function ActiveWorkout() {
 
   return <div className="narrow">
     <div className="hdr">
-      <button className="iconbtn" aria-label={t('Discard')} onClick={() => confirmSheet({ title: t('Discard workout?'), message: t('The sets you logged in this session will be lost.'), confirmText: t('Discard'), danger: true, onConfirm: () => { update(s => { s.active = null }); stopRest(); nav('/home') } })}><Icon name="xmark" /></button>
+      <button className="iconbtn" aria-label={t('Minimize')} onClick={() => nav('/home')}><Icon name="chevronLeft" /></button>
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontWeight: 600 }}>{A.name}</div>
         <div className="sub">
@@ -422,28 +422,17 @@ function ActiveWorkout() {
       <Button size="sm" onClick={() => update(s => { s.active.phase = 'workout' })}>{t('Switch to workout')}</Button>
     </div>}
 
-    <div className={A.entries.length ? 'workout-split' : undefined}>
-      {A.entries.length > 1 && <aside className="workout-exnav">
-        {units.map((u, ui) => {
-          const idx = u[0]
-          const e = A.entries[idx]
-          const ex = exOr(e.id)
-          const allDone = u.every(i => A.entries[i].sets.every(s => s.done))
-          const isCur = u.includes(cur)
-          return <div key={idx} className={'workout-exnav-item' + (isCur ? ' cur' : '')}
-            onClick={() => update(s => { s.active.cur = idx })}>
-            <span className={allDone ? 'done-dot' : 'open-dot'} />
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ex.n}</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, marginTop: 16 }}>
+      {A.entries.length > 0 ? units.map((u, ui) => {
+        const isSuperset = u.length > 1
+        return <div key={ui}>
+          <div className="muted small" style={{ marginBottom: 6 }}>
+            {isSuperset ? t('Superset {0} / {1}', ui + 1, units.length) : t('Exercise {0} / {1}', ui + 1, units.length)}
           </div>
-        })}
-      </aside>}
-      <div>
-        {A.entries.length ? <>
-          <div className="muted small" style={{ marginBottom: 6 }}>{isSuperset ? t('Superset {0} / {1}', unitIdx + 1, units.length) : t('Exercise {0} / {1}', unitIdx + 1, units.length)}</div>
           {isSuperset ? (
             <div className="ss-card">
               <div className="ss-hd"><Icon name="link" />{t('Superset · do these back-to-back, rest after both')}</div>
-              {unit.map((idx, k) => <div key={idx} className="ss-ex">
+              {u.map((idx, k) => <div key={idx} className="ss-ex">
                 {k > 0 && <div className="ss-amp">+</div>}
                 <ExerciseBlock entryIdx={idx} compact
                   onToggle={i => toggle(idx, i)} onField={(i, f, v) => setField(idx, i, f, v)} onAddSet={() => addSet(idx)} onRemoveSet={() => removeSet(idx)} onStartTimed={i => startTimed(idx, i)} onSwap={() => swap(idx)}
@@ -451,19 +440,15 @@ function ActiveWorkout() {
               </div>)}
             </div>
           ) : (
-            <ExerciseBlock entryIdx={cur} onToggle={i => toggle(cur, i)} onField={(i, f, v) => setField(cur, i, f, v)} onAddSet={() => addSet(cur)} onRemoveSet={() => removeSet(cur)} onStartTimed={i => startTimed(cur, i)} onSwap={() => swap(cur)}
-              onTag={i => tagSet(cur, i)} onDropField={(i, di, f, v) => dropField(cur, i, di, f, v)} onAddDrop={i => addDrop(cur, i)} onStartExec={i => startExec(cur, i)} />
+            <ExerciseBlock entryIdx={u[0]} onToggle={i => toggle(u[0], i)} onField={(i, f, v) => setField(u[0], i, f, v)} onAddSet={() => addSet(u[0])} onRemoveSet={() => removeSet(u[0])} onStartTimed={i => startTimed(u[0], i)} onSwap={() => swap(u[0])}
+              onTag={i => tagSet(u[0], i)} onDropField={(i, di, f, v) => dropField(u[0], i, di, f, v)} onAddDrop={i => addDrop(u[0], i)} onStartExec={i => startExec(u[0], i)} />
           )}
-        </> : <div className="empty"><div className="ico"><Icon name="shuffle" /></div>{t('Freestyle workout — add your first exercise.')}</div>}
-      </div>
+        </div>
+      }) : <div className="empty"><div className="ico"><Icon name="shuffle" /></div>{t('Freestyle workout — add your first exercise.')}</div>}
     </div>
 
     <div style={{ height: 12 }} />
     {!restActive && <><Button icon="timer" onClick={() => startRest(S.restSec)}>{t('Start rest')}</Button><div style={{ height: 8 }} /></>}
-    <div className="row">
-      <Button icon="chevronLeft" disabled={unitIdx <= 0} onClick={() => update(s => { s.active.cur = units[unitIdx - 1][0] })}>{t('Prev')}</Button>
-      <Button trailingIcon="chevronRight" disabled={unitIdx < 0 || unitIdx >= units.length - 1} onClick={() => update(s => { s.active.cur = units[unitIdx + 1][0] })}>{t('Next')}</Button>
-    </div>
     <div style={{ height: 10 }} />
     <Button onClick={() => exercisePicker(ex => exConfigSheet(ex, null, cfg => update(s => {
       const full = { ...cfg, id: ex.id }
@@ -479,6 +464,8 @@ function ActiveWorkout() {
         {allDone ? t('Finish workout') : t('Finish workout early · {0} exercises', exDone + '/' + A.entries.length)}
       </button>
     })()}
+    <div style={{ height: 16 }} />
+    <Button variant="danger" onClick={() => confirmSheet({ title: t('Discard workout?'), message: t('The sets you logged in this session will be lost.'), confirmText: t('Discard'), danger: true, onConfirm: () => { update(s => { s.active = null }); stopRest(); nav('/home') } })}>{t('Discard workout')}</Button>
     <div style={{ height: 40 }} />
   </div>
 }
