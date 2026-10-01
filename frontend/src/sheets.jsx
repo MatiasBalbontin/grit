@@ -727,6 +727,15 @@ function DayOverride({ iso, close }) {
         <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
         <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
         {effId === r.id && <Icon name="check" className="accent" />}</div>)}
+      <div className="item" onClick={() => {
+        close()
+        const ts = new Date(iso + 'T12:00:00').getTime()
+        update(s => {
+          s.workouts.push({ id: uid(), d: iso, start: ts, end: ts + 3600000, name: t('Completed'), entries: [], vol: 0 })
+          s.workouts.sort((a, b) => a.start - b.start)
+        })
+        toast(t('Day marked as completed'))
+      }}><span className="lrow-i" style={{ background: 'var(--green)', color: '#fff' }}><Icon name="check" /></span><div className="grow"><div className="tt">{t('Mark as done (Día ganado)')}</div><div className="ss">{t('Count this day towards your streak')}</div></div></div>
       <div className="item" onClick={() => set('rest')}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="moon" /></span><div className="grow"><div className="tt">{t('Rest / skip this day')}</div></div>{effId === null && <Icon name="check" className="accent" />}</div>
       {hasOvr && <div className="item" onClick={() => set('')}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="reset" /></span><div className="grow"><div className="tt">{t('Back to weekly plan')}</div></div></div>}
     </div>
@@ -737,6 +746,12 @@ export const dayOverrideSheet = iso => ui().openSheet(close => <DayOverride iso=
 function DayAssign({ day, close }) {
   const st = useStore(s => s.S)
   const set = v => { update(s => { if (v) s.week[day] = v; else delete s.week[day] }); close() }
+  const createRoutine = () => {
+    close()
+    const r = { id: uid(), name: t('New routine'), emoji: DEFAULT_GLYPH, ex: [] }
+    update(s => { s.routines.push(r); s.week[day] = r.id })
+    nav('/plan/r/' + r.id)
+  }
   return <>
     <h3>{t(DAYN[day])}</h3>
     <div className="list">
@@ -745,6 +760,9 @@ function DayAssign({ day, close }) {
         <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
         <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
         {st.week[day] === r.id && <Icon name="check" className="accent" />}</div>)}
+    </div>
+    <div style={{ marginTop: 16 }}>
+      <Button variant="tinted" icon="plus" onClick={createRoutine}>{t('New routine')}</Button>
     </div>
   </>
 }
